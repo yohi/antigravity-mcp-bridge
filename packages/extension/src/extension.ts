@@ -75,6 +75,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         )
     );
 
+    // 注意: この "antigravity.sendPromptToAgentPanel" のモック登録は、
+    // Antigravity IDE 外での開発/テスト時のフォールバックとして使用され、意図的に実際の IDE コマンドを上書きします。
+    // 本番環境や Antigravity IDE 内で実行する場合は、実際のコマンドを使用する必要があります。
+    // このモックは handlers.ts で vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", ...) と
+    // 呼び出される開発時のローカルテストにて実行されます。
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "antigravity.sendPromptToAgentPanel",

@@ -26,12 +26,12 @@ Antigravityの「サーバー機能欠如」という課題を、拡張機能と
 ### 1.2 Scope (v1.2)
 
 * **Capabilities**:
-    * **File System Bridge**: 外部からAntigravity内のファイルを読み書き可能にする。
-    * **Agent Dispatch**: 外部からAntigravityのエージェントパネルに指示を投入する。
+  * **File System Bridge**: 外部からAntigravity内のファイルを読み書き可能にする。
+  * **Agent Dispatch**: 外部からAntigravityのエージェントパネルに指示を投入する。
 * **Constraints**:
-    * **No Direct LLM Response**: AntigravityからのテキストレスポンスはAPI経由では取得しない（成果物ファイルで判断）。
-    * **Auth**: 静的トークンによる簡易認証。
-    * **Localhost Only**: セキュリティリスク低減のためループバックアドレス限定。
+  * **No Direct LLM Response**: AntigravityからのテキストレスポンスはAPI経由では取得しない（成果物ファイルで判断）。
+  * **Auth**: 静的トークンによる簡易認証。
+  * **Localhost Only**: セキュリティリスク低減のためループバックアドレス限定。
 
 ## 2. Tech Stack
 
@@ -132,9 +132,11 @@ VS Code `settings.json` 設定項目:
 * **Action**: `dispatch_agent_task`
 * **Input**: prompt (String)
 * **Internal Logic**:
-    * VS Codeコマンド `antigravity.sendPromptToAgentPanel` を実行。
-    * 引数: `{ action: "sendMessage", text: prompt }`
-    * 戻り値: 即座に Success を返す（非同期実行）。
+  * VS Codeコマンド `antigravity.sendPromptToAgentPanel` を実行。
+  * 引数: `{ action: "sendMessage", text: prompt }`
+  * `dispatch_agent_task` は Fire-and-Forget セマンティクスのため、正常時は即座に Success を返す。
+  * ただし、コマンドの未登録など `antigravity.sendPromptToAgentPanel` コマンドが同期的に例外をスローし失敗した場合は、エラーとして処理し、API自体もエラー状態を返すこと。
+  * Antigravity 内部の検知不可能な失敗（Agentパネル側でのエラー等）については、デバッグ支援のための観測可能な副作用として、ログによる警告出力を残すこと。
 
 ## 5. API Definition (MCP Mapping)
 
@@ -193,5 +195,5 @@ OpenCodeがAntigravityと連携する際の推奨ワークフローパターン�
 
 * **制限事項**: Antigravityがタスクを完了したかどうかを直接APIで知る方法はない。必ず「完了時にファイルを作成する」という規約（Signal File）をプロンプトに含める必要がある。
 * **トラブルシューティング**:
-    * 接続拒否: `settings.json` のトークンがBridge CLI側の設定と一致しているか確認する。
-    * コマンドエラー: Antigravity拡張機能が正しくロードされているか確認する（起動直後はロード待ちが必要な場合がある）。
+  * 接続拒否: `settings.json` のトークンがBridge CLI側の設定と一致しているか確認する。
+  * コマンドエラー: Antigravity拡張機能が正しくロードされているか確認する（起動直後はロード待ちが必要な場合がある）。

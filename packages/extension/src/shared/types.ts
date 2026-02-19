@@ -10,6 +10,10 @@ import {
     BridgeMethod,
     AgentDispatchParams,
     AgentDispatchResult,
+    BridgeRequest,
+    BridgeResponseSuccess,
+    BridgeResponseError,
+    BridgeResponse,
 } from "@antigravity-mcp-bridge/shared";
 
 export {
@@ -17,36 +21,11 @@ export {
     BridgeMethod,
     AgentDispatchParams,
     AgentDispatchResult,
+    BridgeRequest,
+    BridgeResponseSuccess,
+    BridgeResponseError,
+    BridgeResponse,
 };
-
-// ============================================================
-// JSON-RPC 2.0 Message Types (Extension <-> CLI)
-// ============================================================
-
-export interface BridgeRequest {
-    jsonrpc: "2.0";
-    id: number | string | null;
-    method: BridgeMethod;
-    params?: Record<string, unknown>;
-}
-
-export interface BridgeResponseSuccess {
-    jsonrpc: "2.0";
-    id: number | string | null;
-    result: unknown;
-}
-
-export interface BridgeResponseError {
-    jsonrpc: "2.0";
-    id: number | string | null;
-    error: {
-        code: number;
-        message: string;
-        data?: unknown;
-    };
-}
-
-export type BridgeResponse = BridgeResponseSuccess | BridgeResponseError;
 
 // ============================================================
 // Error Codes
@@ -63,6 +42,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** Agent Dispatch Failed */
+    AGENT_DISPATCH_FAILED: -32006,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;

@@ -5,10 +5,10 @@ import type {
     BridgeResponse,
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
-import { isBridgeResponse } from "@antigravity-mcp-bridge/shared";
+import { isBridgeResponse, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
-type BridgeDispatchMethod = BridgeMethod | "agent/dispatch";
+type BridgeDispatchMethod = BridgeMethod | typeof BRIDGE_METHODS.AGENT_DISPATCH;
 type BridgeRequestWithDispatch = Omit<BridgeRequest, "method"> & {
     method: BridgeDispatchMethod;
 };

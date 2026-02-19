@@ -62,6 +62,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** Agent Dispatch Failed */
+    AGENT_DISPATCH_FAILED: -32006,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;
@@ -104,6 +106,7 @@ export interface AgentDispatchParams {
 
 export interface AgentDispatchResult {
     success: boolean;
+    message?: string;
 }
 
 // ============================================================

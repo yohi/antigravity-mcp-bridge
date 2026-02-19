@@ -208,7 +208,7 @@ async function handleAgentDispatch(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
         throw createBridgeError(
-            ERROR_CODES.INVALID_PARAMS,
+            ERROR_CODES.AGENT_DISPATCH_FAILED,
             `Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
     }
@@ -221,7 +221,7 @@ async function handleAgentDispatch(
         `[MCP Bridge] Agent task dispatched: "${preview}"`
     );
 
-    return { success: true };
+    return { success: true, message: `Agent task dispatched: "${preview}"` };
 }
 
 // ============================================================
