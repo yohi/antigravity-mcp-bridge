@@ -86,7 +86,9 @@ VS Codeの settings.json で以下の設定を可能にする。
 * **Priority**: Must Have  
 * **Input**: なし  
 * **Output**: ワークスペース内のファイル一覧（相対パス）。  
-* **Behavior**: .gitignore に含まれるファイルは除外する。
+* **Behavior**: .gitignore に含まれるファイルは除外する。  
+* **Constraints**:
+  * **Path Scope**: ワークスペース外のファイルアクセスは拒否する (-32005)。
 
 #### FR-02: Read Resource (File Content)
 
@@ -96,6 +98,9 @@ VS Codeの settings.json で以下の設定を可能にする。
 * **Constraints**:  
   * antigravity.mcp.maxFileSize を超えるファイルはエラー -32002 (File Too Large) を返す。  
   * バイナリファイルはエラーを返すか、Base64ではなく「Binary file」というプレースホルダーを返す。
+  * **Path Validation**:
+    * 入力されたパスは正規化 (Normalize) し、`..` を含むディレクトリトラバーサルを拒否する (-32602 or -32005)。
+    * シンボリックリンク解決後 (fs.realpath) のパスがワークスペース外にある場合はエラー -32005 (Path Outside Workspace) を返す。
 
 #### FR-03: Write Resource (Create/Update)
 
@@ -103,6 +108,7 @@ VS Codeの settings.json で以下の設定を可能にする。
 * **Input**: Path, Content  
 * **Output**: Success/Failure Message  
 * **Safety**:  
+  * **Path Validation**: FR-02と同様、正規化と包含チェック(Resolve + Realpath)を行い、ワークスペース外への書き込みを拒否する (-32005)。
   * **Human-in-the-Loop**: 重要な変更（ファイルの新規作成、大幅な書き換え）については、VS Codeの vscode.window.showInformationMessage で承認を求める（v1.0では「通知」のみとし、自動承認とする設定も可とするが、仕様上は **"Notify user on write"** を必須とする）。
 
 ## 5. Data Structure & Protocol
@@ -142,6 +148,7 @@ ExtensionとCLI間でやり取りする JSON メッセージ形式。
 * -32002: File Too Large  
 * -32003: File Not Found  
 * -32004: Read-Only Mode Violation
+* -32005: Path Outside Workspace
 
 ## 6. API Definition (MCP Mapping)
 

@@ -59,6 +59,10 @@ export const ERROR_CODES = {
     FILE_NOT_FOUND: -32003,
     /** Read-Only Mode Violation */
     READ_ONLY_VIOLATION: -32004,
+    /** Path Outside Workspace */
+    PATH_OUTSIDE_WORKSPACE: -32005,
+    /** Invalid Params */
+    INVALID_PARAMS: -32602,
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

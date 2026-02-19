@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import type {
     BridgeRequest,
     BridgeResponse,
+    BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
 
 /**
@@ -88,7 +89,7 @@ export class WsClient {
      * JSON-RPC リクエストを送信し、対応するレスポンスを待つ。
      */
     async sendRequest(
-        method: string,
+        method: BridgeMethod,
         params?: Record<string, unknown>
     ): Promise<BridgeResponse> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -99,7 +100,7 @@ export class WsClient {
         const request: BridgeRequest = {
             jsonrpc: "2.0",
             id,
-            method: method as BridgeRequest["method"],
+            method: method,
             params,
         };
 

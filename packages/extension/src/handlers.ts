@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import type {
     BridgeRequest,
     BridgeResponse,
@@ -92,7 +93,7 @@ async function handleFsRead(
     config: ServerConfig
 ): Promise<FsReadResult> {
     if (!params?.path) {
-        throw createBridgeError(ERROR_CODES.FILE_NOT_FOUND, "Path is required");
+        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Path is required");
     }
 
     const fileUri = resolveFileUri(params.path);
@@ -187,19 +188,29 @@ function resolveFileUri(relativePath: string): vscode.Uri {
 
     // 2. Security Checks
     if (normalized.startsWith("/") || normalized.startsWith("\\")) {
-        throw new Error("Path must be relative");
+        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Path must be relative");
     }
     if (normalized.split(path.sep).includes("..")) {
-        throw new Error("Directory traversal detected");
+        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Directory traversal detected");
     }
 
     // 3. Resolve absolute path
     const absPath = path.join(rootPath, normalized);
 
     // 4. Verify containment
+    let checkPath = absPath;
+    try {
+        checkPath = fs.realpathSync(absPath);
+    } catch {
+        // If file doesn't exist, check path resolution based on workspace root
+    }
+
     const rootPathWithSep = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
-    if (!absPath.startsWith(rootPathWithSep) && absPath !== rootPath) {
-        throw new Error("Access denied: Path is outside workspace");
+    if (!checkPath.startsWith(rootPathWithSep) && checkPath !== rootPath) {
+        throw createBridgeError(
+            ERROR_CODES.PATH_OUTSIDE_WORKSPACE,
+            "Access denied: Path is outside workspace"
+        );
     }
 
     return vscode.Uri.file(absPath);
