@@ -197,7 +197,8 @@ function resolveFileUri(relativePath: string): vscode.Uri {
     const absPath = path.join(rootPath, normalized);
 
     // 4. Verify containment
-    if (!absPath.startsWith(rootPath)) {
+    const rootPathWithSep = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
+    if (!absPath.startsWith(rootPathWithSep) && absPath !== rootPath) {
         throw new Error("Access denied: Path is outside workspace");
     }
 
