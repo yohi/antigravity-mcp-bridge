@@ -63,10 +63,12 @@ async function handleFsList(
     if (!workspaceFolders || workspaceFolders.length === 0) {
         throw new Error("No workspace folder is open");
     }
+    const rootFolder = workspaceFolders[0];
 
     // VS Code の findFiles は .gitignore を尊重する
+    // resolveFileUri が workspaceFolders[0] を基準にしているため、検索もそれに合わせる (Option A)
     const files = await vscode.workspace.findFiles(
-        "**/*",
+        new vscode.RelativePattern(rootFolder, "**/*"),
         "**/node_modules/**"
     );
 
@@ -74,12 +76,8 @@ async function handleFsList(
     const relativePaths: string[] = [];
 
     for (const file of files) {
-        const folder = vscode.workspace.getWorkspaceFolder(file);
-        if (!folder) {
-            continue;
-        }
-
-        let relative = path.relative(folder.uri.fsPath, file.fsPath);
+        // rootFolder 配下であることは保証されている
+        let relative = path.relative(rootFolder.uri.fsPath, file.fsPath);
 
         // Normalize separators to '/'
         relative = relative.split(path.sep).join("/");
