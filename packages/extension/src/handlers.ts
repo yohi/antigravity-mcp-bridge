@@ -15,7 +15,7 @@ import type {
 } from "./shared/types";
 import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
 import type { ServerConfig } from "./server";
-import { formatUnknownError } from "./error-format";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -198,10 +198,20 @@ async function handleAgentDispatch(
         throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
     }
 
-    await vscode.commands.executeCommand(
-        "antigravity.sendPromptToAgentPanel",
-        params.prompt
-    );
+    try {
+        await vscode.commands.executeCommand(
+            "antigravity.sendPromptToAgentPanel",
+            params.prompt
+        );
+    } catch (err: unknown) {
+        config.outputChannel.appendLine(
+            `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
+        );
+        throw createBridgeError(
+            ERROR_CODES.INVALID_PARAMS,
+            `Failed to dispatch agent task: ${formatUnknownError(err)}`
+        );
+    }
 
     const preview =
         params.prompt.length > 80
@@ -304,10 +314,10 @@ function createBridgeError(code: number, message: string): BridgeError {
 // Response Helpers
 // ============================================================
 
-function success(id: number, result: unknown): BridgeResponse {
+function success(id: number | string | null, result: unknown): BridgeResponse {
     return { jsonrpc: "2.0", id, result };
 }
 
-function error(id: number, code: number, message: string): BridgeResponse {
+function error(id: number | string | null, code: number, message: string): BridgeResponse {
     return { jsonrpc: "2.0", id, error: { code, message } };
 }

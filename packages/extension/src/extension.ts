@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
 import { BridgeWebSocketServer } from "./server";
-import { formatUnknownError } from "./error-format";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 let wsServer: BridgeWebSocketServer | undefined;
 
@@ -71,6 +71,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 }
 
                 outputChannel.appendLine(`[MCP Bridge] === Test Complete ===`);
+            }
+        )
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "antigravity.sendPromptToAgentPanel",
+            (prompt: string) => {
+                outputChannel.appendLine(`[MCP Bridge] Received agent prompt: ${prompt}`);
+                vscode.window.showInformationMessage(`Agent Prompt: ${prompt}`);
             }
         )
     );

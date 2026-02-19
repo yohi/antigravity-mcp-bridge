@@ -6,7 +6,7 @@ import type {
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
 import { isBridgeResponse } from "@antigravity-mcp-bridge/shared";
-import { formatUnknownError } from "./error-format.js";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 type BridgeDispatchMethod = BridgeMethod | "agent/dispatch";
 type BridgeRequestWithDispatch = Omit<BridgeRequest, "method"> & {

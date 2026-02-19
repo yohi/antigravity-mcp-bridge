@@ -7,7 +7,7 @@ import type {
     BridgeMethod,
 } from "./shared/types";
 import { handleMessage } from "./handlers";
-import { formatUnknownError } from "./error-format";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 export interface ServerConfig {
     port: number;

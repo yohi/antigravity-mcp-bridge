@@ -15,7 +15,7 @@
 
 import { WsClient } from "./ws-client.js";
 import { startMcpServer } from "./mcp-server.js";
-import { formatUnknownError } from "./error-format.js";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 async function main(): Promise<void> {
     const host = process.env.ANTIGRAVITY_HOST ?? "127.0.0.1";

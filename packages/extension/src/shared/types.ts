@@ -5,26 +5,40 @@
  * 共通定数を提供する。
  */
 
+import {
+    BRIDGE_METHODS,
+    BridgeMethod,
+    AgentDispatchParams,
+    AgentDispatchResult,
+} from "@antigravity-mcp-bridge/shared";
+
+export {
+    BRIDGE_METHODS,
+    BridgeMethod,
+    AgentDispatchParams,
+    AgentDispatchResult,
+};
+
 // ============================================================
 // JSON-RPC 2.0 Message Types (Extension <-> CLI)
 // ============================================================
 
 export interface BridgeRequest {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     method: BridgeMethod;
     params?: Record<string, unknown>;
 }
 
 export interface BridgeResponseSuccess {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     result: unknown;
 }
 
 export interface BridgeResponseError {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     error: {
         code: number;
         message: string;
@@ -33,19 +47,6 @@ export interface BridgeResponseError {
 }
 
 export type BridgeResponse = BridgeResponseSuccess | BridgeResponseError;
-
-// ============================================================
-// Bridge Methods
-// ============================================================
-
-export const BRIDGE_METHODS = {
-    FS_LIST: "fs/list",
-    FS_READ: "fs/read",
-    FS_WRITE: "fs/write",
-    AGENT_DISPATCH: "agent/dispatch",
-} as const;
-
-export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
 
 // ============================================================
 // Error Codes
@@ -98,14 +99,6 @@ export interface FsWriteResult {
     message: string;
 }
 
-export interface AgentDispatchParams {
-    prompt: string;
-}
-
-export interface AgentDispatchResult {
-    success: boolean;
-}
-
 // ============================================================
 // Helpers
 // ============================================================
@@ -113,7 +106,10 @@ export interface AgentDispatchResult {
 export function isBridgeResponse(data: unknown): data is BridgeResponse {
     if (typeof data !== "object" || data === null) return false;
     const obj = data as Record<string, unknown>;
-    return obj.jsonrpc === "2.0" && typeof obj.id === "number";
+    return (
+        obj.jsonrpc === "2.0" &&
+        (typeof obj.id === "number" || typeof obj.id === "string" || obj.id === null)
+    );
 }
 
 export function isErrorResponse(
