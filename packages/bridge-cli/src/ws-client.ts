@@ -6,6 +6,12 @@ import type {
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
 import { isBridgeResponse } from "@antigravity-mcp-bridge/shared";
+import { formatUnknownError } from "./error-format.js";
+
+type BridgeDispatchMethod = BridgeMethod | "agent/dispatch";
+type BridgeRequestWithDispatch = Omit<BridgeRequest, "method"> & {
+    method: BridgeDispatchMethod;
+};
 
 /**
  * WebSocket クライアント。
@@ -66,8 +72,7 @@ export class WsClient extends EventEmitter {
                         pending.resolve(response);
                     }
                 } catch (err: unknown) {
-                    const errorMessage =
-                        err instanceof Error ? err.message : String(err);
+                    const errorMessage = formatUnknownError(err);
                     console.error(
                         `[Bridge CLI] Failed to parse response: ${errorMessage}`
                     );
@@ -107,18 +112,19 @@ export class WsClient extends EventEmitter {
      * JSON-RPC リクエストを送信し、対応するレスポンスを待つ。
      */
     async sendRequest(
-        method: BridgeMethod,
-        params?: Record<string, unknown>
+        method: BridgeDispatchMethod,
+        params?: Record<string, unknown>,
+        timeoutMs: number = 30_000
     ): Promise<BridgeResponse> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             throw new Error("WebSocket is not connected");
         }
 
         const id = this.nextId++;
-        const request: BridgeRequest = {
+        const request: BridgeRequestWithDispatch = {
             jsonrpc: "2.0",
             id,
-            method: method,
+            method,
             params,
         };
 
@@ -126,7 +132,7 @@ export class WsClient extends EventEmitter {
             const timeout = setTimeout(() => {
                 this.pendingRequests.delete(id);
                 reject(new Error(`Request timed out: ${method} (id: ${id})`));
-            }, 30000); // 30秒タイムアウト
+            }, timeoutMs);
 
             this.pendingRequests.set(id, {
                 resolve: (response: BridgeResponse) => {

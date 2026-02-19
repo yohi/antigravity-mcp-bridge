@@ -12,7 +12,7 @@ import type { WsClient } from "./ws-client.js";
 export function createMcpServer(wsClient: WsClient): McpServer {
     const server = new McpServer({
         name: "antigravity-mcp-bridge",
-        version: "1.0.0",
+        version: "1.2.0",
     });
 
     // -------------------------------------------------------
@@ -121,6 +121,56 @@ export function createMcpServer(wsClient: WsClient): McpServer {
                     {
                         type: "text" as const,
                         text: result.message,
+                    },
+                ],
+            };
+        }
+    );
+
+    // -------------------------------------------------------
+    // Tool: dispatch_agent_task
+    // -------------------------------------------------------
+    server.tool(
+        "dispatch_agent_task",
+        "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
+            "レスポンスは返らないため、結果はファイル変更で確認すること。" +
+            "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。",
+        {
+            prompt: z.string().describe("エージェントに送信するプロンプト"),
+        },
+        async ({ prompt }) => {
+            const response = await wsClient.sendRequest("agent/dispatch", { prompt });
+
+            if (isErrorResponse(response)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Error: ${response.error.message}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            const result = response.result as { success: boolean };
+            if (!result.success) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: "Error: Failed to dispatch task to Antigravity agent.",
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            return {
+                content: [
+                    {
+                        type: "text" as const,
+                        text: "タスクをAntigravityエージェントに送信しました。結果はファイルの変更で確認してください。",
                     },
                 ],
             };

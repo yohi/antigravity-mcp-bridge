@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
 import { BridgeWebSocketServer } from "./server";
+import { formatUnknownError } from "./error-format";
 
 let wsServer: BridgeWebSocketServer | undefined;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = vscode.window.createOutputChannel(
         "Antigravity MCP Bridge"
     );
@@ -42,6 +43,36 @@ export function activate(context: vscode.ExtensionContext): void {
     outputChannel.appendLine(`[MCP Bridge] Read-only mode: ${readOnly}`);
     outputChannel.appendLine(
         `[MCP Bridge] Max file size: ${maxFileSize} bytes`
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "antigravity-mcp-bridge.testPrompt",
+            async () => {
+                outputChannel.show(true);
+                outputChannel.appendLine(`\n[MCP Bridge] === Agent Dispatch Test ===`);
+                const tp = "Reply with exactly one word: HELLO";
+
+                outputChannel.appendLine(
+                    `[MCP Bridge] Testing antigravity.sendPromptToAgentPanel...`
+                );
+                try {
+                    const result = await vscode.commands.executeCommand(
+                        "antigravity.sendPromptToAgentPanel",
+                        tp
+                    );
+                    outputChannel.appendLine(
+                        `  (${JSON.stringify(tp)}) => ${JSON.stringify(result)} [${typeof result}]`
+                    );
+                } catch (e: unknown) {
+                    outputChannel.appendLine(
+                        `  (${JSON.stringify(tp)}) ERR: ${formatUnknownError(e)}`
+                    );
+                }
+
+                outputChannel.appendLine(`[MCP Bridge] === Test Complete ===`);
+            }
+        )
     );
 
     // 設定変更の監視

@@ -42,6 +42,7 @@ export const BRIDGE_METHODS = {
     FS_LIST: "fs/list",
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
+    AGENT_DISPATCH: "agent/dispatch",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -95,6 +96,14 @@ export interface FsWriteParams {
 export interface FsWriteResult {
     success: boolean;
     message: string;
+}
+
+export interface AgentDispatchParams {
+    prompt: string;
+}
+
+export interface AgentDispatchResult {
+    success: boolean;
 }
 
 // ============================================================

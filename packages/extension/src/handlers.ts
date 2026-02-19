@@ -10,9 +10,12 @@ import type {
     FsReadResult,
     FsWriteParams,
     FsWriteResult,
+    AgentDispatchParams,
+    AgentDispatchResult,
 } from "./shared/types";
 import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
 import type { ServerConfig } from "./server";
+import { formatUnknownError } from "./error-format";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -40,6 +43,15 @@ export async function handleMessage(
                     await handleFsWrite(params as unknown as FsWriteParams, config)
                 );
 
+            case BRIDGE_METHODS.AGENT_DISPATCH:
+                return success(
+                    id,
+                    await handleAgentDispatch(
+                        params as unknown as AgentDispatchParams,
+                        config
+                    )
+                );
+
             default:
                 return error(id, -32601, `Method not found: ${method}`);
         }
@@ -47,7 +59,7 @@ export async function handleMessage(
         if (err instanceof BridgeError) {
             return error(id, err.code, err.message);
         }
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatUnknownError(err);
         return error(id, -32603, `Internal error: ${errorMessage}`);
     }
 }
@@ -176,6 +188,30 @@ async function handleFsWrite(
         success: true,
         message: `File written: ${params.path}`,
     };
+}
+
+async function handleAgentDispatch(
+    params: AgentDispatchParams,
+    config: ServerConfig
+): Promise<AgentDispatchResult> {
+    if (!params?.prompt) {
+        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
+    }
+
+    await vscode.commands.executeCommand(
+        "antigravity.sendPromptToAgentPanel",
+        params.prompt
+    );
+
+    const preview =
+        params.prompt.length > 80
+            ? `${params.prompt.slice(0, 80)}...`
+            : params.prompt;
+    config.outputChannel.appendLine(
+        `[MCP Bridge] Agent task dispatched: "${preview}"`
+    );
+
+    return { success: true };
 }
 
 // ============================================================

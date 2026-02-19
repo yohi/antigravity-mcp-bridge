@@ -43,7 +43,13 @@
                     "description": "読み込み可能な最大バイト数（デフォルト100KB）"
                 }
             }
-        }
+        },
+        "commands": [
+            {
+                "command": "antigravity-mcp-bridge.testPrompt",
+                "title": "Antigravity MCP Bridge: Test Prompt"
+            }
+        ]
     },
     "scripts": {
         "build": "npx tsc -p ./",

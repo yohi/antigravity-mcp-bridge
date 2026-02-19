@@ -42,7 +42,7 @@ export const BRIDGE_METHODS = {
     FS_LIST: "fs/list",
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
-    LLM_CHAT: "llm/chat",
+    AGENT_DISPATCH: "agent/dispatch",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -98,15 +98,12 @@ export interface FsWriteResult {
     message: string;
 }
 
-export interface LlmChatParams {
+export interface AgentDispatchParams {
     prompt: string;
-    model?: string;
-    context?: string;
 }
 
-export interface LlmChatResult {
-    content: string;
-    model: string;
+export interface AgentDispatchResult {
+    success: boolean;
 }
 
 // ============================================================

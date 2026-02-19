@@ -15,6 +15,7 @@
 
 import { WsClient } from "./ws-client.js";
 import { startMcpServer } from "./mcp-server.js";
+import { formatUnknownError } from "./error-format.js";
 
 async function main(): Promise<void> {
     const host = process.env.ANTIGRAVITY_HOST ?? "127.0.0.1";
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
     try {
         await wsClient.connect();
     } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatUnknownError(err);
         console.error(
             `[Bridge CLI] Failed to connect to Extension: ${errorMessage}`
         );
@@ -67,7 +68,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorMessage = formatUnknownError(err);
     console.error(`[Bridge CLI] Fatal error: ${errorMessage}`);
     process.exit(1);
 });
