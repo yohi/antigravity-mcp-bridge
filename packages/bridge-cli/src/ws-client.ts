@@ -5,6 +5,7 @@ import type {
     BridgeResponse,
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
+import { isBridgeResponse } from "@antigravity-mcp-bridge/shared";
 
 /**
  * WebSocket クライアント。
@@ -14,7 +15,7 @@ import type {
 export class WsClient extends EventEmitter {
     private ws: WebSocket | undefined;
     private pendingRequests = new Map<
-        number,
+        number | string | null,
         {
             resolve: (value: BridgeResponse) => void;
             reject: (reason: Error) => void;
@@ -52,9 +53,9 @@ export class WsClient extends EventEmitter {
             this.ws.on("message", (data: WebSocket.RawData) => {
                 try {
                     const parsed = JSON.parse(data.toString());
-                    if (!this.isBridgeResponse(parsed)) {
+                    if (!isBridgeResponse(parsed)) {
                         console.error(
-                            `[Bridge CLI] Invalid response format: missing 'id'`
+                            `[Bridge CLI] Invalid response format: must be a valid JSON-RPC 2.0 response`
                         );
                         return;
                     }
@@ -157,13 +158,5 @@ export class WsClient extends EventEmitter {
             this.ws = undefined;
             this.isOpen = false;
         }
-    }
-
-    private isBridgeResponse(obj: any): obj is BridgeResponse {
-        return (
-            typeof obj === "object" &&
-            obj !== null &&
-            typeof (obj as any).id === "number"
-        );
     }
 }

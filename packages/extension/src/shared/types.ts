@@ -11,20 +11,20 @@
 
 export interface BridgeRequest {
     jsonrpc: "2.0";
-    id: number | string | null;
+    id: number;
     method: BridgeMethod;
     params?: Record<string, unknown>;
 }
 
 export interface BridgeResponseSuccess {
     jsonrpc: "2.0";
-    id: number | string | null;
+    id: number;
     result: unknown;
 }
 
 export interface BridgeResponseError {
     jsonrpc: "2.0";
-    id: number | string | null;
+    id: number;
     error: {
         code: number;
         message: string;
@@ -42,6 +42,7 @@ export const BRIDGE_METHODS = {
     FS_LIST: "fs/list",
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
+    LLM_CHAT: "llm/chat",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -97,6 +98,17 @@ export interface FsWriteResult {
     message: string;
 }
 
+export interface LlmChatParams {
+    prompt: string;
+    model?: string;
+    context?: string;
+}
+
+export interface LlmChatResult {
+    content: string;
+    model: string;
+}
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -104,36 +116,7 @@ export interface FsWriteResult {
 export function isBridgeResponse(data: unknown): data is BridgeResponse {
     if (typeof data !== "object" || data === null) return false;
     const obj = data as Record<string, unknown>;
-    // Check standard JSON-RPC 2.0 properties
-    if (obj.jsonrpc !== "2.0") return false;
-
-    // Validate ID: string | number | null
-    if (
-        typeof obj.id !== "string" &&
-        typeof obj.id !== "number" &&
-        obj.id !== null
-    ) {
-        return false;
-    }
-
-    // result OR error must be present, but not both (though JSON-RPC doesn't strictly forbid both, usually it's one)
-    // The user requirement: "require that either obj.result !== undefined or obj.error !== undefined"
-    const hasResult = "result" in obj && obj.result !== undefined;
-    const hasError = "error" in obj && obj.error !== undefined;
-
-    if (!hasResult && !hasError) return false;
-
-    if (hasError) {
-        // Validate error object
-        const err = obj.error;
-        if (typeof err !== "object" || err === null) return false;
-        const errObj = err as Record<string, unknown>;
-        return (
-            typeof errObj.code === "number" && typeof errObj.message === "string"
-        );
-    }
-
-    return true;
+    return obj.jsonrpc === "2.0" && typeof obj.id === "number";
 }
 
 export function isErrorResponse(

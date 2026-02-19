@@ -5,7 +5,7 @@ import type {
     BridgeRequest,
     BridgeResponse,
     BridgeMethod,
-} from "@antigravity-mcp-bridge/shared";
+} from "./shared/types";
 import { handleMessage } from "./handlers";
 
 export interface ServerConfig {

@@ -10,8 +10,8 @@ import type {
     FsReadResult,
     FsWriteParams,
     FsWriteResult,
-} from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS, ERROR_CODES } from "@antigravity-mcp-bridge/shared";
+} from "./shared/types";
+import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
 import type { ServerConfig } from "./server";
 
 /**

@@ -4,8 +4,12 @@
     "description": "Exposes Antigravity IDE workspace state via WebSocket for MCP bridge integration",
     "version": "1.0.0",
     "publisher": "antigravity",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/antigravity/mcp-bridge"
+    },
     "engines": {
-        "vscode": "^1.85.0"
+        "vscode": "^1.91.0"
     },
     "categories": [
         "Other"
@@ -42,8 +46,9 @@
         }
     },
     "scripts": {
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
+        "build": "npx tsc -p ./",
+        "compile": "npx tsc -p ./",
+        "watch": "npx tsc -watch -p ./",
         "clean": "rm -rf out"
     },
     "dependencies": {
