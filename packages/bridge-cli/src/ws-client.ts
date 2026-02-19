@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { EventEmitter } from "events";
 import type {
     BridgeRequest,
     BridgeResponse,
@@ -10,7 +11,7 @@ import type {
  * Extension（WebSocket サーバー）への接続と JSON-RPC リクエスト/レスポンスの
  * 対応付けを管理する。
  */
-export class WsClient {
+export class WsClient extends EventEmitter {
     private ws: WebSocket | undefined;
     private pendingRequests = new Map<
         number,
@@ -22,8 +23,10 @@ export class WsClient {
     private nextId = 1;
     private url: string;
     private token: string;
+    private isOpen = false;
 
     constructor(url: string, token: string) {
+        super();
         this.url = url;
         this.token = token;
     }
@@ -41,13 +44,21 @@ export class WsClient {
             });
 
             this.ws.on("open", () => {
+                this.isOpen = true;
                 console.error("[Bridge CLI] Connected to Extension");
                 resolve();
             });
 
             this.ws.on("message", (data: WebSocket.RawData) => {
                 try {
-                    const response = JSON.parse(data.toString()) as BridgeResponse;
+                    const parsed = JSON.parse(data.toString());
+                    if (!this.isBridgeResponse(parsed)) {
+                        console.error(
+                            `[Bridge CLI] Invalid response format: missing 'id'`
+                        );
+                        return;
+                    }
+                    const response = parsed;
                     const pending = this.pendingRequests.get(response.id);
                     if (pending) {
                         this.pendingRequests.delete(response.id);
@@ -63,6 +74,7 @@ export class WsClient {
             });
 
             this.ws.on("close", (code: number, reason: Buffer) => {
+                this.isOpen = false;
                 console.error(
                     `[Bridge CLI] Connection closed: ${code} ${reason.toString()}`
                 );
@@ -80,7 +92,12 @@ export class WsClient {
                     pending.reject(err);
                     this.pendingRequests.delete(id);
                 }
-                reject(err);
+
+                if (!this.isOpen) {
+                    reject(err);
+                } else {
+                    this.emit("error", err);
+                }
             });
         });
     }
@@ -138,6 +155,15 @@ export class WsClient {
         if (this.ws) {
             this.ws.close();
             this.ws = undefined;
+            this.isOpen = false;
         }
+    }
+
+    private isBridgeResponse(obj: any): obj is BridgeResponse {
+        return (
+            typeof obj === "object" &&
+            obj !== null &&
+            typeof (obj as any).id === "number"
+        );
     }
 }

@@ -137,7 +137,7 @@ async function handleFsWrite(
 ): Promise<FsWriteResult> {
     if (!params?.path || params.content === undefined) {
         throw createBridgeError(
-            -32602, // INVALID_PARAMS
+            ERROR_CODES.INVALID_PARAMS,
             "Path and content are required"
         );
     }
@@ -202,7 +202,19 @@ function resolveFileUri(relativePath: string): vscode.Uri {
     try {
         checkPath = fs.realpathSync(absPath);
     } catch {
-        // If file doesn't exist, check path resolution based on workspace root
+        // fs.realpathSync failed (e.g. file does not exist).
+        // Try resolving the parent directory to check for symlinks/traversal.
+        try {
+            const parentDir = path.dirname(absPath);
+            const resolvedParent = fs.realpathSync(parentDir);
+            checkPath = path.join(resolvedParent, path.basename(absPath));
+        } catch {
+            // Parent directory resolution also failed.
+            throw createBridgeError(
+                ERROR_CODES.PATH_OUTSIDE_WORKSPACE,
+                "Access denied: Unable to resolve path"
+            );
+        }
     }
 
     const rootPathWithSep = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
