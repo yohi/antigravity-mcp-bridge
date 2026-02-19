@@ -14,7 +14,7 @@ import type {
 export class WsClient extends EventEmitter {
     private ws: WebSocket | undefined;
     private pendingRequests = new Map<
-        number,
+        number | string | null,
         {
             resolve: (value: BridgeResponse) => void;
             reject: (reason: Error) => void;
@@ -160,10 +160,15 @@ export class WsClient extends EventEmitter {
     }
 
     private isBridgeResponse(obj: any): obj is BridgeResponse {
-        return (
-            typeof obj === "object" &&
-            obj !== null &&
-            typeof (obj as any).id === "number"
-        );
+        if (typeof obj !== "object" || obj === null) return false;
+        const r = obj as any;
+
+        // Validate ID (string | number | null)
+        const validId =
+            typeof r.id === "string" ||
+            typeof r.id === "number" ||
+            r.id === null;
+
+        return validId;
     }
 }

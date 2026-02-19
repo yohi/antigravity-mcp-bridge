@@ -4,4 +4,4 @@ out/
 *.vsix
 .vscode-test/
 *.js.map
-*.vsix
+

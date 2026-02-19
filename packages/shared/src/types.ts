@@ -11,20 +11,20 @@
 
 export interface BridgeRequest {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     method: BridgeMethod;
     params?: Record<string, unknown>;
 }
 
 export interface BridgeResponseSuccess {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     result: unknown;
 }
 
 export interface BridgeResponseError {
     jsonrpc: "2.0";
-    id: number;
+    id: number | string | null;
     error: {
         code: number;
         message: string;
@@ -104,7 +104,36 @@ export interface FsWriteResult {
 export function isBridgeResponse(data: unknown): data is BridgeResponse {
     if (typeof data !== "object" || data === null) return false;
     const obj = data as Record<string, unknown>;
-    return obj.jsonrpc === "2.0" && typeof obj.id === "number";
+    // Check standard JSON-RPC 2.0 properties
+    if (obj.jsonrpc !== "2.0") return false;
+
+    // Validate ID: string | number | null
+    if (
+        typeof obj.id !== "string" &&
+        typeof obj.id !== "number" &&
+        obj.id !== null
+    ) {
+        return false;
+    }
+
+    // result OR error must be present, but not both (though JSON-RPC doesn't strictly forbid both, usually it's one)
+    // The user requirement: "require that either obj.result !== undefined or obj.error !== undefined"
+    const hasResult = "result" in obj && obj.result !== undefined;
+    const hasError = "error" in obj && obj.error !== undefined;
+
+    if (!hasResult && !hasError) return false;
+
+    if (hasError) {
+        // Validate error object
+        const err = obj.error;
+        if (typeof err !== "object" || err === null) return false;
+        const errObj = err as Record<string, unknown>;
+        return (
+            typeof errObj.code === "number" && typeof errObj.message === "string"
+        );
+    }
+
+    return true;
 }
 
 export function isErrorResponse(

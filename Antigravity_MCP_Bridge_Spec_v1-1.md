@@ -175,7 +175,7 @@ MCPクライアント（Claude等）には以下のツールとして公開す�
 
 ### Step 3: Implement LLM Proxy [v1.1]
 
-"llm/chat ハンドラを追加してください。vscode.lm APIを使用し、family: 'gemini' (または vendor: 'google') で利用可能なチャットモデルを検索してください。見つかったモデルにプロンプトを送信し、レスポンスを返してください。package.json の engines フィールドで vscode のバージョンを ^1.90.0 (Language Model API対応版) に設定してください。"
+"llm/chat ハンドラを追加してください。vscode.lm APIを使用し、family: 'gemini' (または vendor: 'google') で利用可能なチャットモデルを検索してください。見つかったモデルにプロンプトを送信し、レスポンスを返してください。package.json の engines フィールドで vscode のバージョンを ^1.91.0 (Language Model API対応版) に設定してください。"
 
 ### Step 4: Implement Bridge CLI (MCP Server)
 
