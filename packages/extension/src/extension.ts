@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as crypto from "crypto";
 import { BridgeWebSocketServer } from "./server";
 
 let wsServer: BridgeWebSocketServer | undefined;
@@ -67,11 +68,5 @@ export function deactivate(): void {
 }
 
 function generateToken(): string {
-    const chars =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < 32; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+    return crypto.randomBytes(32).toString("hex");
 }

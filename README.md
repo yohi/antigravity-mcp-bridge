@@ -4,7 +4,7 @@ Antigravity IDE（VS Code フォーク）の内部状態を [Model Context Proto
 
 ## アーキテクチャ
 
-```
+```text
 Claude Desktop  ──Stdio (JSON-RPC)──►  Bridge CLI  ──WebSocket──►  VS Code Extension
 (MCP Client)                           (MCP Server)                (WebSocket Server)
                                                                         │

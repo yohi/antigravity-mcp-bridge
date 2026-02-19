@@ -94,7 +94,7 @@ VS Codeの settings.json で以下の設定を可能にする。
 * **Input**: URI (file:///path/to/project/src/main.ts)  
 * **Output**: ファイルのテキストコンテンツ。  
 * **Constraints**:  
-  * antigravity.mcp.maxFileSize を超えるファイルはエラー 413 Payload Too Large を返す。  
+  * antigravity.mcp.maxFileSize を超えるファイルはエラー -32002 (File Too Large) を返す。  
   * バイナリファイルはエラーを返すか、Base64ではなく「Binary file」というプレースホルダーを返す。
 
 #### FR-03: Write Resource (Create/Update)

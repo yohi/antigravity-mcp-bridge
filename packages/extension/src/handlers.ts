@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import type {
     BridgeRequest,
     BridgeResponse,
@@ -24,24 +25,27 @@ export async function handleMessage(
     try {
         switch (method) {
             case BRIDGE_METHODS.FS_LIST:
-                return success(id, await handleFsList(params as FsListParams));
+                return success(id, await handleFsList(params as unknown as FsListParams));
 
             case BRIDGE_METHODS.FS_READ:
                 return success(
                     id,
-                    await handleFsRead(params as FsReadParams, config)
+                    await handleFsRead(params as unknown as FsReadParams, config)
                 );
 
             case BRIDGE_METHODS.FS_WRITE:
                 return success(
                     id,
-                    await handleFsWrite(params as FsWriteParams, config)
+                    await handleFsWrite(params as unknown as FsWriteParams, config)
                 );
 
             default:
                 return error(id, -32601, `Method not found: ${method}`);
         }
     } catch (err: unknown) {
+        if (err instanceof BridgeError) {
+            return error(id, err.code, err.message);
+        }
         const errorMessage = err instanceof Error ? err.message : String(err);
         return error(id, -32603, `Internal error: ${errorMessage}`);
     }
@@ -66,11 +70,14 @@ async function handleFsList(
     );
 
     const rootUri = workspaceFolders[0].uri;
+    const recursive = params?.recursive ?? true;
+
     const relativePaths = files
         .map((f) => {
             const relative = f.path.substring(rootUri.path.length + 1);
             return relative;
         })
+        .filter((p) => recursive || !p.includes("/"))
         .sort();
 
     return { files: relativePaths };
@@ -129,7 +136,7 @@ async function handleFsWrite(
 ): Promise<FsWriteResult> {
     if (!params?.path || params.content === undefined) {
         throw createBridgeError(
-            ERROR_CODES.FILE_NOT_FOUND,
+            -32602, // INVALID_PARAMS
             "Path and content are required"
         );
     }
@@ -171,7 +178,30 @@ function resolveFileUri(relativePath: string): vscode.Uri {
     if (!workspaceFolders || workspaceFolders.length === 0) {
         throw new Error("No workspace folder is open");
     }
-    return vscode.Uri.joinPath(workspaceFolders[0].uri, relativePath);
+
+    const rootUri = workspaceFolders[0].uri;
+    const rootPath = rootUri.fsPath;
+
+    // 1. Normalized path
+    const normalized = path.normalize(relativePath);
+
+    // 2. Security Checks
+    if (normalized.startsWith("/") || normalized.startsWith("\\")) {
+        throw new Error("Path must be relative");
+    }
+    if (normalized.split(path.sep).includes("..")) {
+        throw new Error("Directory traversal detected");
+    }
+
+    // 3. Resolve absolute path
+    const absPath = path.join(rootPath, normalized);
+
+    // 4. Verify containment
+    if (!absPath.startsWith(rootPath)) {
+        throw new Error("Access denied: Path is outside workspace");
+    }
+
+    return vscode.Uri.file(absPath);
 }
 
 function isBinaryContent(buffer: Uint8Array): boolean {

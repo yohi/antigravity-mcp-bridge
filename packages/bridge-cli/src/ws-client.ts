@@ -74,6 +74,11 @@ export class WsClient {
 
             this.ws.on("error", (err: Error) => {
                 console.error(`[Bridge CLI] WebSocket error: ${err.message}`);
+                // 全ての pending リクエストをリジェクト
+                for (const [id, pending] of this.pendingRequests) {
+                    pending.reject(err);
+                    this.pendingRequests.delete(id);
+                }
                 reject(err);
             });
         });
@@ -115,7 +120,13 @@ export class WsClient {
                 },
             });
 
-            this.ws!.send(JSON.stringify(request));
+            this.ws!.send(JSON.stringify(request), (err) => {
+                if (err) {
+                    clearTimeout(timeout);
+                    this.pendingRequests.delete(id);
+                    reject(err);
+                }
+            });
         });
     }
 
