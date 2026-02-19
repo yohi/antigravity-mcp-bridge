@@ -70,18 +70,28 @@ async function handleFsList(
         "**/node_modules/**"
     );
 
-    const rootUri = workspaceFolders[0].uri;
     const recursive = params?.recursive ?? true;
+    const relativePaths: string[] = [];
 
-    const relativePaths = files
-        .map((f) => {
-            const relative = f.path.substring(rootUri.path.length + 1);
-            return relative;
-        })
-        .filter((p) => recursive || !p.includes("/"))
-        .sort();
+    for (const file of files) {
+        const folder = vscode.workspace.getWorkspaceFolder(file);
+        if (!folder) {
+            continue;
+        }
 
-    return { files: relativePaths };
+        let relative = path.relative(folder.uri.fsPath, file.fsPath);
+
+        // Normalize separators to '/'
+        relative = relative.split(path.sep).join("/");
+
+        if (!recursive && relative.includes("/")) {
+            continue;
+        }
+
+        relativePaths.push(relative);
+    }
+
+    return { files: relativePaths.sort() };
 }
 
 // ============================================================
