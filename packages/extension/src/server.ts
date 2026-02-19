@@ -14,7 +14,9 @@ export interface ServerConfig {
     token: string;
     readOnly: boolean;
     maxFileSize: number;
+    llmTimeout: number;
     outputChannel: vscode.OutputChannel;
+    globalStatePath: string;
 }
 
 export class BridgeWebSocketServer {

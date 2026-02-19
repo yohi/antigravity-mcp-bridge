@@ -12,7 +12,7 @@ import type { WsClient } from "./ws-client.js";
 export function createMcpServer(wsClient: WsClient): McpServer {
     const server = new McpServer({
         name: "antigravity-mcp-bridge",
-        version: "1.2.0",
+        version: "1.3.0",
     });
 
     // -------------------------------------------------------
@@ -132,7 +132,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     // -------------------------------------------------------
     server.tool(
         "dispatch_agent_task",
-        "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
+        "[レガシー] Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
             "レスポンスは返らないため、結果はファイル変更で確認すること。" +
             "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。",
         {
@@ -171,6 +171,56 @@ export function createMcpServer(wsClient: WsClient): McpServer {
                     {
                         type: "text" as const,
                         text: "タスクをAntigravityエージェントに送信しました。結果はファイルの変更で確認してください。",
+                    },
+                ],
+            };
+        }
+    );
+
+    // -------------------------------------------------------
+    // Tool: ask_antigravity
+    // -------------------------------------------------------
+    server.tool(
+        "ask_antigravity",
+        "Antigravity内部のLLM（Gemini）にプロンプトを送信し、回答テキストを同期的に取得する。",
+        {
+            prompt: z.string().describe("LLMに送信するプロンプト"),
+        },
+        async ({ prompt }) => {
+            const response = await wsClient.sendRequest(
+                "llm/ask",
+                { prompt },
+                90_000
+            );
+
+            if (isErrorResponse(response)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Error: ${response.error.message}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            const result = response.result as {
+                text: string;
+                cascadeId?: string;
+                status: "complete" | "timeout" | "error";
+            };
+
+            const lines = [result.text];
+            if (result.cascadeId) {
+                lines.push(`\n[cascade_id] ${result.cascadeId}`);
+            }
+
+            return {
+                content: [
+                    {
+                        type: "text" as const,
+                        text: lines.join("\n"),
                     },
                 ],
             };

@@ -5,19 +5,15 @@
  * 共通定数を提供する。
  */
 
-import {
-    BRIDGE_METHODS,
-    BridgeMethod,
-    AgentDispatchParams,
-    AgentDispatchResult,
-} from "@antigravity-mcp-bridge/shared";
+export const BRIDGE_METHODS = {
+    FS_LIST: "fs/list",
+    FS_READ: "fs/read",
+    FS_WRITE: "fs/write",
+    AGENT_DISPATCH: "agent/dispatch",
+    LLM_ASK: "llm/ask",
+} as const;
 
-export {
-    BRIDGE_METHODS,
-    BridgeMethod,
-    AgentDispatchParams,
-    AgentDispatchResult,
-};
+export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
 
 // ============================================================
 // JSON-RPC 2.0 Message Types (Extension <-> CLI)
@@ -63,6 +59,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** LLM Timeout */
+    LLM_TIMEOUT: -32006,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;
@@ -97,6 +95,24 @@ export interface FsWriteParams {
 export interface FsWriteResult {
     success: boolean;
     message: string;
+}
+
+export interface AgentDispatchParams {
+    prompt: string;
+}
+
+export interface AgentDispatchResult {
+    success: boolean;
+}
+
+export interface LlmAskParams {
+    prompt: string;
+}
+
+export interface LlmAskResult {
+    text: string;
+    cascadeId?: string;
+    status: "complete" | "timeout" | "error";
 }
 
 // ============================================================
