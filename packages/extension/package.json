@@ -1,0 +1,58 @@
+{
+    "name": "antigravity-mcp-extension",
+    "displayName": "Antigravity MCP Bridge",
+    "description": "Exposes Antigravity IDE workspace state via WebSocket for MCP bridge integration",
+    "version": "1.0.0",
+    "publisher": "antigravity",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "Antigravity MCP Bridge",
+            "properties": {
+                "antigravity.mcp.port": {
+                    "type": "number",
+                    "default": 8888,
+                    "description": "WebSocketサーバーのポート番号"
+                },
+                "antigravity.mcp.token": {
+                    "type": "string",
+                    "default": "",
+                    "description": "認証用トークン（空の場合は起動時に自動生成）"
+                },
+                "antigravity.mcp.readOnly": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "trueの場合、書き込み操作を拒否"
+                },
+                "antigravity.mcp.maxFileSize": {
+                    "type": "number",
+                    "default": 102400,
+                    "description": "読み込み可能な最大バイト数（デフォルト100KB）"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "clean": "rm -rf out"
+    },
+    "dependencies": {
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.85.0",
+        "@types/ws": "^8.5.0",
+        "typescript": "^5.7.0"
+    }
+}
