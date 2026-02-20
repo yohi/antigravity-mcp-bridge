@@ -69,6 +69,61 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         )
     );
 
+    let cachedIgnoreDirs: Set<string> | undefined;
+
+    const loadIgnoreDirs = async (): Promise<Set<string>> => {
+        const defaultIgnoreDirs = [".git", "node_modules", "dist", "out"];
+        let configuredIgnoreDirs = vscode.workspace.getConfiguration("antigravity").get<string[]>("ignoreDirs");
+        if (!Array.isArray(configuredIgnoreDirs)) {
+            configuredIgnoreDirs = [];
+        }
+
+        const ignoreSet = new Set([...defaultIgnoreDirs, ...configuredIgnoreDirs]);
+        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (rootPath) {
+            const ignoreFilePath = path.join(rootPath, ".antigravityignore");
+            try {
+                // Read file asynchronously
+                const content = await vscode.workspace.fs.readFile(vscode.Uri.file(ignoreFilePath));
+                const fileContent = Buffer.from(content).toString("utf8");
+                fileContent.split(/\r?\n/).forEach((line) => {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith("#")) {
+                        ignoreSet.add(trimmed);
+                    }
+                });
+            } catch (e) {
+                // Ignore errors reading the file
+            }
+        }
+        return ignoreSet;
+    };
+
+    const getIgnoreDirs = async (): Promise<Set<string>> => {
+        if (!cachedIgnoreDirs) {
+            cachedIgnoreDirs = await loadIgnoreDirs();
+        }
+        return cachedIgnoreDirs;
+    };
+
+    // Initialize cache at startup
+    loadIgnoreDirs().then((dirs) => {
+        cachedIgnoreDirs = dirs;
+    });
+
+    const refreshCache = () => {
+        cachedIgnoreDirs = undefined;
+        loadIgnoreDirs().then((dirs) => {
+            cachedIgnoreDirs = dirs;
+        });
+    };
+
+    const ignoreWatcher = vscode.workspace.createFileSystemWatcher("**/.antigravityignore");
+    ignoreWatcher.onDidChange(refreshCache);
+    ignoreWatcher.onDidCreate(refreshCache);
+    ignoreWatcher.onDidDelete(refreshCache);
+    context.subscriptions.push(ignoreWatcher);
+
     // 設定変更の監視
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -77,12 +132,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "[MCP Bridge] Configuration changed. Restart the extension to apply."
                 );
             }
+            if (e.affectsConfiguration("antigravity.ignoreDirs")) {
+                refreshCache();
+            }
         })
     );
 
     // File System Watcher
     const watcher = vscode.workspace.createFileSystemWatcher("**/*");
-    const broadcastEvent = (type: "file_created" | "file_changed" | "file_deleted", uri: vscode.Uri) => {
+    const broadcastEvent = async (type: "file_created" | "file_changed" | "file_deleted", uri: vscode.Uri) => {
         if (!wsServer) return;
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!rootPath) return;
@@ -93,30 +151,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         relativePath = relativePath.split(path.sep).join("/");
 
-        // Skip noisy directories using a merged ignore list
-        const defaultIgnoreDirs = [".git", "node_modules", "dist", "out"];
-        let configuredIgnoreDirs = vscode.workspace.getConfiguration("antigravity").get<string[]>("ignoreDirs");
-        if (!Array.isArray(configuredIgnoreDirs)) {
-            configuredIgnoreDirs = [];
-        }
-
-        const ignoreDirs = new Set([...defaultIgnoreDirs, ...configuredIgnoreDirs]);
-
-        // Optional project ignore file
-        const ignoreFilePath = path.join(rootPath, ".antigravityignore");
-        if (fs.existsSync(ignoreFilePath)) {
-            try {
-                const fileContent = fs.readFileSync(ignoreFilePath, "utf8");
-                fileContent.split(/\r?\n/).forEach(line => {
-                    const trimmed = line.trim();
-                    if (trimmed && !trimmed.startsWith("#")) {
-                        ignoreDirs.add(trimmed);
-                    }
-                });
-            } catch (e) {
-                // Ignore errors reading the file
-            }
-        }
+        const ignoreDirs = await getIgnoreDirs();
 
         if (relativePath.split("/").some(segment => ignoreDirs.has(segment))) {
             return;
