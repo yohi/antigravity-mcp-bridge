@@ -69,6 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     let cachedIgnoreDirs: Set<string> | undefined;
+    let cachedIgnoreDirsPromise: Promise<Set<string>> | undefined;
 
     const loadIgnoreDirs = async (): Promise<Set<string>> => {
         const defaultIgnoreDirs = [".git", "node_modules", "dist", "out"];
@@ -102,30 +103,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return ignoreSet;
     };
 
-    const getIgnoreDirs = async (): Promise<Set<string>> => {
-        if (!cachedIgnoreDirs) {
-            cachedIgnoreDirs = await loadIgnoreDirs();
+    const refreshCache = () => {
+        if (cachedIgnoreDirsPromise) {
+            return;
         }
-        return cachedIgnoreDirs;
+        cachedIgnoreDirsPromise = loadIgnoreDirs().catch((e) => {
+            logger.appendLine(`[MCP Bridge] Error loading ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
+            return new Set([".git", "node_modules", "dist", "out"]);
+        });
+        cachedIgnoreDirsPromise.then((dirs) => {
+            cachedIgnoreDirs = dirs;
+        }).finally(() => {
+            cachedIgnoreDirsPromise = undefined;
+        });
+    };
+
+    const getIgnoreDirs = async (): Promise<Set<string>> => {
+        if (cachedIgnoreDirsPromise) {
+            return cachedIgnoreDirsPromise;
+        }
+        if (cachedIgnoreDirs) {
+            return cachedIgnoreDirs;
+        }
+        refreshCache();
+        return cachedIgnoreDirsPromise!;
     };
 
     // Initialize cache at startup
-    loadIgnoreDirs().then((dirs) => {
-        cachedIgnoreDirs = dirs;
-    }).catch((e) => {
-        logger.appendLine(`[MCP Bridge] Error initializing ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
-        cachedIgnoreDirs = new Set([".git", "node_modules", "dist", "out"]);
-    });
-
-    const refreshCache = () => {
-        cachedIgnoreDirs = undefined; // Temporarily unset so concurrent calls know it's refreshing
-        loadIgnoreDirs().then((dirs) => {
-            cachedIgnoreDirs = dirs;
-        }).catch((e) => {
-            logger.appendLine(`[MCP Bridge] Error refreshing ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
-            cachedIgnoreDirs = new Set([".git", "node_modules", "dist", "out"]);
-        });
-    };
+    refreshCache();
 
     const ignoreWatcher = vscode.workspace.createFileSystemWatcher("**/.antigravityignore");
     ignoreWatcher.onDidChange(refreshCache);
