@@ -12,7 +12,7 @@ Antigravity IDE は VS Code フォークであり、AI 機能を内蔵してい�
 AI バックエンドは **Protocol Buffers ベースの内部 RPC** で IDE ワークベンチと通信しており、
 標準の `vscode.lm` 拡張 API にはモデルを登録していない。
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │  Antigravity IDE (VS Code fork)                 │
 │                                                 │
@@ -86,7 +86,7 @@ AI バックエンドは **Protocol Buffers ベースの内部 RPC** で IDE ワ
 
 `sendChatActionMessage` に文字列を渡した際のエラー:
 
-```
+```text
 cannot decode exa.language_server_pb.SendActionToChatPanelRequest from JSON:
 Unexpected token 'R', "Reply with"... is not valid JSON
 ```
@@ -145,6 +145,7 @@ Unexpected token 'R', "Reply with"... is not valid JSON
 | 主な機能 | クォータ管理、モデルキャッシュ |
 
 注目コマンド:
+
 - `agCockpit.refreshModelCache` — 実行時内部エラー発生
 - `agCockpit.accountTree.loadAccountQuota` — アカウントクォータ読込
 
@@ -186,14 +187,17 @@ Antigravity IDE は `vscode.lm` API にモデルを登録していないため�
 コマンド実行が `undefined` を返す問題に対し、以下の 2 段階のハックを検討する。
 
 ### アプローチ A: Trajectory (軌跡) の追跡
+
 Jetski エージェントの回答は「軌跡」として管理されている。
+
 1. `antigravity.getDiagnostics` から直近の `cascade_id` を抽出。
 2. `exa.language_server_pb.GetCascadeTrajectoryRequest` を内部 RPC 経由で送信。
 3. 返却されるバイナリ（または JSON）から LLM の回答テキストを復元する。
 
 ### アプローチ B: プロキシ/インターセプタの注入
-Google 内部サーバー (`cloudcode-pa.googleapis.com`) との通信を傍受する。
-- 拡張機能の `extension.js` を改変し、バックエンドへのリクエスト時に使用される Auth トークン（`Authorization: Bearer ...`）を横取りし、外部から直接 API を叩く。
+
+**警告:** この「アプローチ B」で想定されている拡張機能 `extension.js` の改変および `Authorization: Bearer ...` の Auth トークンキャプチャ手法は、利用規約やセキュリティポリシーへの重大な違反となる可能性が高いです。
+実験や実装を行う場合は、事前に必ず法務やコンプライアンス部門等にご確認ください。`cloudcode-pa.googleapis.com` への直接的な通信方法など、この手法に関わる実行可能な実装のガイダンスとしての利用は控えてください。
 
 ---
 

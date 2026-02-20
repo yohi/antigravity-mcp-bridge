@@ -65,6 +65,8 @@ export const ERROR_CODES = {
     PATH_OUTSIDE_WORKSPACE: -32005,
     /** LLM Timeout */
     LLM_TIMEOUT: -32006,
+    /** Agent Dispatch Failed */
+    AGENT_DISPATCH_FAILED: -32007,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;
@@ -107,6 +109,7 @@ export interface AgentDispatchParams {
 
 export interface AgentDispatchResult {
     success: boolean;
+    message?: string;
 }
 
 export interface LlmAskParams {

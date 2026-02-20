@@ -211,14 +211,14 @@ async function handleAgentDispatch(
     try {
         await vscode.commands.executeCommand(
             "antigravity.sendPromptToAgentPanel",
-            params.prompt
+            { action: "sendMessage", text: params.prompt }
         );
     } catch (err: unknown) {
         config.outputChannel.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
         throw createBridgeError(
-            ERROR_CODES.INVALID_PARAMS,
+            ERROR_CODES.AGENT_DISPATCH_FAILED,
             `Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
     }
@@ -231,7 +231,7 @@ async function handleAgentDispatch(
         `[MCP Bridge] Agent task dispatched: "${preview}"`
     );
 
-    return { success: true };
+    return { success: true, message: `Agent task dispatched: "${preview}"` };
 }
 
 async function handleLlmAsk(

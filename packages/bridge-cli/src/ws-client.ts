@@ -5,13 +5,9 @@ import type {
     BridgeResponse,
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
-import { isBridgeResponse } from "@antigravity-mcp-bridge/shared";
+import { isBridgeResponse, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
-type BridgeDispatchMethod = BridgeMethod | "agent/dispatch" | "llm/ask";
-type BridgeRequestWithDispatch = Omit<BridgeRequest, "method"> & {
-    method: BridgeDispatchMethod;
-};
 
 /**
  * WebSocket クライアント。
@@ -112,7 +108,7 @@ export class WsClient extends EventEmitter {
      * JSON-RPC リクエストを送信し、対応するレスポンスを待つ。
      */
     async sendRequest(
-        method: BridgeDispatchMethod,
+        method: BridgeMethod,
         params?: Record<string, unknown>,
         timeoutMs: number = 30_000
     ): Promise<BridgeResponse> {
@@ -121,7 +117,7 @@ export class WsClient extends EventEmitter {
         }
 
         const id = this.nextId++;
-        const request: BridgeRequestWithDispatch = {
+        const request: BridgeRequest = {
             jsonrpc: "2.0",
             id,
             method,
