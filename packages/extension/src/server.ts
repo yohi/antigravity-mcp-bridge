@@ -1,5 +1,6 @@
 import * as http from "node:http";
 import * as vscode from "vscode";
+import { RingBufferLogger } from "./logger";
 import { WebSocketServer, WebSocket } from "ws";
 import type {
     BridgeRequest,
@@ -13,8 +14,9 @@ export interface ServerConfig {
     port: number;
     token: string;
     readOnly: boolean;
+    requireWriteApproval: boolean;
     maxFileSize: number;
-    outputChannel: vscode.OutputChannel;
+    logger: RingBufferLogger;
 }
 
 export class BridgeWebSocketServer {
@@ -35,7 +37,7 @@ export class BridgeWebSocketServer {
             ) => {
                 const authHeader = info.req.headers["authorization"];
                 if (!authHeader || authHeader !== `Bearer ${this.config.token}`) {
-                    this.config.outputChannel.appendLine(
+                    this.config.logger.appendLine(
                         "[MCP Bridge] Connection rejected: invalid token"
                     );
                     callback(false, 401, "Unauthorized");
@@ -46,14 +48,14 @@ export class BridgeWebSocketServer {
         });
 
         this.wss.on("connection", (ws: WebSocket) => {
-            this.config.outputChannel.appendLine(
+            this.config.logger.appendLine(
                 "[MCP Bridge] Client connected"
             );
 
             ws.on("message", async (data: Buffer) => {
                 try {
                     const message = JSON.parse(data.toString()) as BridgeRequest;
-                    this.config.outputChannel.appendLine(
+                    this.config.logger.appendLine(
                         `[MCP Bridge] Received: ${message.method} (id: ${message.id})`
                     );
 
@@ -61,7 +63,7 @@ export class BridgeWebSocketServer {
                     ws.send(JSON.stringify(response));
                 } catch (err: unknown) {
                     const errorMessage = formatUnknownError(err);
-                    this.config.outputChannel.appendLine(
+                    this.config.logger.appendLine(
                         `[MCP Bridge] Error processing message: ${errorMessage}`
                     );
                     const errorResponse: BridgeResponse = {
@@ -77,20 +79,20 @@ export class BridgeWebSocketServer {
             });
 
             ws.on("close", () => {
-                this.config.outputChannel.appendLine(
+                this.config.logger.appendLine(
                     "[MCP Bridge] Client disconnected"
                 );
             });
 
             ws.on("error", (err: Error) => {
-                this.config.outputChannel.appendLine(
+                this.config.logger.appendLine(
                     `[MCP Bridge] WebSocket error: ${err.message}`
                 );
             });
         });
 
         this.wss.on("error", (err: Error) => {
-            this.config.outputChannel.appendLine(
+            this.config.logger.appendLine(
                 `[MCP Bridge] Server error: ${err.message}`
             );
             vscode.window.showErrorMessage(
@@ -99,10 +101,20 @@ export class BridgeWebSocketServer {
         });
     }
 
+    broadcast(message: object): void {
+        if (!this.wss) return;
+        const data = JSON.stringify(message);
+        for (const client of this.wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(data);
+            }
+        }
+    }
+
     stop(): void {
         if (this.wss) {
             this.wss.close();
-            this.config.outputChannel.appendLine(
+            this.config.logger.appendLine(
                 "[MCP Bridge] WebSocket server stopped"
             );
             this.wss = undefined;

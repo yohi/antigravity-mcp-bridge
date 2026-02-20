@@ -12,8 +12,10 @@ import type {
     FsWriteResult,
     AgentDispatchParams,
     AgentDispatchResult,
-} from "./shared/types";
-import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
+    BridgeGetLogsParams,
+    BridgeGetLogsResult,
+} from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, ERROR_CODES } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
@@ -41,6 +43,12 @@ export async function handleMessage(
                 return success(
                     id,
                     await handleFsWrite(params as unknown as FsWriteParams, config)
+                );
+
+            case BRIDGE_METHODS.GET_LOGS:
+                return success(
+                    id,
+                    await handleGetLogs(params as unknown as BridgeGetLogsParams, config)
                 );
 
             case BRIDGE_METHODS.AGENT_DISPATCH:
@@ -173,14 +181,34 @@ async function handleFsWrite(
     const fileUri = resolveFileUri(params.path);
     const contentBytes = new TextEncoder().encode(params.content);
 
-    // 書き込み通知（仕様: v1.0 では通知のみ、自動承認）
-    vscode.window.showInformationMessage(
-        `MCP Bridge: Writing to ${params.path}`
-    );
+    if (config.requireWriteApproval) {
+        const approveStr = "Approve";
+        const rejectStr = "Reject";
+        const selection = await vscode.window.showInformationMessage(
+            `MCP Bridge wants to write to ${params.path}.`,
+            { modal: true },
+            approveStr,
+            rejectStr
+        );
+        if (selection !== approveStr) {
+            config.logger.appendLine(
+                `[MCP Bridge] Write rejected by user: ${params.path}`
+            );
+            throw createBridgeError(
+                ERROR_CODES.USER_REJECTED,
+                "Write operation rejected by user"
+            );
+        }
+    } else {
+        // 書き込み通知（仕様: v1.0 では通知のみ、自動承認）
+        vscode.window.showInformationMessage(
+            `MCP Bridge: Writing to ${params.path}`
+        );
+    }
 
     await vscode.workspace.fs.writeFile(fileUri, contentBytes);
 
-    config.outputChannel.appendLine(
+    config.logger.appendLine(
         `[MCP Bridge] File written: ${params.path}`
     );
 
@@ -204,7 +232,7 @@ async function handleAgentDispatch(
             { action: "sendMessage", text: params.prompt }
         );
     } catch (err: unknown) {
-        config.outputChannel.appendLine(
+        config.logger.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
         throw createBridgeError(
@@ -217,11 +245,20 @@ async function handleAgentDispatch(
         params.prompt.length > 80
             ? `${params.prompt.slice(0, 80)}...`
             : params.prompt;
-    config.outputChannel.appendLine(
+    config.logger.appendLine(
         `[MCP Bridge] Agent task dispatched: "${preview}"`
     );
 
     return { success: true, message: `Agent task dispatched: "${preview}"` };
+}
+
+async function handleGetLogs(
+    params: BridgeGetLogsParams,
+    config: ServerConfig
+): Promise<BridgeGetLogsResult> {
+    const lines = params?.lines ?? 100;
+    const logs = config.logger.getLogs(lines);
+    return { logs };
 }
 
 // ============================================================

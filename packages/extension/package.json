@@ -37,10 +37,28 @@
                     "default": false,
                     "description": "trueの場合、書き込み操作を拒否"
                 },
+                "antigravity.mcp.requireWriteApproval": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "trueの場合、ファイル書き込み時にユーザーの承認を要求"
+                },
                 "antigravity.mcp.maxFileSize": {
                     "type": "number",
                     "default": 102400,
                     "description": "読み込み可能な最大バイト数（デフォルト100KB）"
+                },
+                "antigravity.ignoreDirs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        ".git",
+                        "node_modules",
+                        "dist",
+                        "out"
+                    ],
+                    "description": "無効にする（イベントをブロードキャストしない）ディレクトリのリスト"
                 }
             }
         }
