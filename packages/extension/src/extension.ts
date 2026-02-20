@@ -93,9 +93,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         relativePath = relativePath.split(path.sep).join("/");
 
+        // Skip noisy directories
+        const ignoreDirs = [".git", "node_modules", "dist", "out"];
+        if (relativePath.split("/").some(segment => ignoreDirs.includes(segment))) {
+            return;
+        }
+
         wsServer.broadcast({
             jsonrpc: "2.0",
-            id: null,
             method: BRIDGE_METHODS.WORKSPACE_EVENT,
             params: {
                 type,
