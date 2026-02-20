@@ -12,14 +12,10 @@ import type {
     FsWriteResult,
     AgentDispatchParams,
     AgentDispatchResult,
-    LlmAskParams,
-    LlmAskResult,
 } from "./shared/types";
 import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
 import type { ServerConfig } from "./server";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
-import { TrajectoryTracker } from "./trajectory-tracker";
-import { PayloadEncoder } from "./payload-encoder";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -54,12 +50,6 @@ export async function handleMessage(
                         params as unknown as AgentDispatchParams,
                         config
                     )
-                );
-
-            case BRIDGE_METHODS.LLM_ASK:
-                return success(
-                    id,
-                    await handleLlmAsk(params as unknown as LlmAskParams, config)
                 );
 
             default:
@@ -232,74 +222,6 @@ async function handleAgentDispatch(
     );
 
     return { success: true, message: `Agent task dispatched: "${preview}"` };
-}
-
-async function handleLlmAsk(
-    params: LlmAskParams,
-    config: ServerConfig
-): Promise<LlmAskResult> {
-    if (!params?.prompt) {
-        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
-    }
-
-    const tracker = new TrajectoryTracker(config.outputChannel, config.globalStatePath);
-    const payload = PayloadEncoder.buildAgentRequest(params.prompt);
-
-    try {
-        await vscode.commands.executeCommand(
-            "antigravity.sendPromptToAgentPanel",
-            payload
-        );
-        config.outputChannel.appendLine(
-            "[MCP Bridge] LLM prompt dispatched (encoded payload)"
-        );
-    } catch (firstErr: unknown) {
-        config.outputChannel.appendLine(
-            `[MCP Bridge] Encoded dispatch failed, retrying with plain prompt: ${formatUnknownError(firstErr)}`
-        );
-
-        try {
-            await vscode.commands.executeCommand(
-                "antigravity.sendPromptToAgentPanel",
-                params.prompt
-            );
-            config.outputChannel.appendLine(
-                "[MCP Bridge] LLM prompt dispatched (plain prompt fallback)"
-            );
-        } catch (secondErr: unknown) {
-            throw createBridgeError(
-                ERROR_CODES.INVALID_PARAMS,
-                `Failed to dispatch LLM ask request: ${formatUnknownError(secondErr)}`
-            );
-        }
-    }
-
-    const timeoutMs = Math.max(1, config.llmTimeout) * 1000;
-
-    try {
-        const { cascadeId, text } = await tracker.pollUntilComplete(timeoutMs);
-        config.outputChannel.appendLine(
-            `[MCP Bridge] LLM ask complete (cascade_id: ${cascadeId})`
-        );
-
-        return {
-            text,
-            cascadeId,
-            status: "complete",
-        };
-    } catch (err: unknown) {
-        const message = formatUnknownError(err);
-        if (message.includes("timed out")) {
-            throw createBridgeError(
-                ERROR_CODES.LLM_TIMEOUT,
-                `LLM response timeout after ${config.llmTimeout} seconds`
-            );
-        }
-        throw createBridgeError(
-            ERROR_CODES.INVALID_PARAMS,
-            `Failed to poll LLM response: ${message}`
-        );
-    }
 }
 
 // ============================================================

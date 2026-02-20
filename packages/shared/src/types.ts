@@ -43,7 +43,6 @@ export const BRIDGE_METHODS = {
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
     AGENT_DISPATCH: "agent/dispatch",
-    LLM_ASK: "llm/ask",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -63,8 +62,6 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
-    /** LLM Timeout */
-    LLM_TIMEOUT: -32006,
     /** Agent Dispatch Failed */
     AGENT_DISPATCH_FAILED: -32007,
     /** Invalid Params */
@@ -110,16 +107,6 @@ export interface AgentDispatchParams {
 export interface AgentDispatchResult {
     success: boolean;
     message?: string;
-}
-
-export interface LlmAskParams {
-    prompt: string;
-}
-
-export interface LlmAskResult {
-    text: string;
-    cascadeId?: string;
-    status: "complete" | "timeout" | "error";
 }
 
 // ============================================================

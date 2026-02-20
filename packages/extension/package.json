@@ -41,48 +41,9 @@
                     "type": "number",
                     "default": 102400,
                     "description": "読み込み可能な最大バイト数（デフォルト100KB）"
-                },
-                "antigravity.mcp.llmTimeout": {
-                    "type": "number",
-                    "default": 60,
-                    "description": "llm/ask で応答を待つ最大秒数（デフォルト60秒）"
                 }
             }
-        },
-        "commands": [
-            {
-                "command": "antigravity-mcp-bridge.testPrompt",
-                "title": "Antigravity MCP Bridge: Test Prompt"
-            },
-            {
-                "command": "antigravity-mcp-bridge.diagnoseCommands",
-                "title": "Antigravity MCP Bridge: Diagnose Commands"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testDiagnostics",
-                "title": "Antigravity MCP Bridge: Test Diagnostics"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testLlmAsk",
-                "title": "Antigravity MCP Bridge: Test llm/ask Flow"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testCascadeCommands",
-                "title": "Antigravity MCP Bridge: Test Cascade Commands"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testSendPrompt",
-                "title": "Antigravity MCP Bridge: Test Send Prompt"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testInternalApis",
-                "title": "Antigravity MCP Bridge: Test Internal APIs"
-            },
-            {
-                "command": "antigravity-mcp-bridge.testStoragePath",
-                "title": "Antigravity MCP Bridge: Test Storage Paths"
-            }
-        ]
+        }
     },
     "scripts": {
         "build": "npx tsc -p ./",
