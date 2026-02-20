@@ -37,6 +37,11 @@
                     "default": false,
                     "description": "trueの場合、書き込み操作を拒否"
                 },
+                "antigravity.mcp.requireWriteApproval": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "trueの場合、ファイル書き込み時にユーザーの承認を要求"
+                },
                 "antigravity.mcp.maxFileSize": {
                     "type": "number",
                     "default": 102400,

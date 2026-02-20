@@ -177,14 +177,63 @@ export function createMcpServer(wsClient: WsClient): McpServer {
         }
     );
 
+    // -------------------------------------------------------
+    // Tool: get_bridge_logs
+    // -------------------------------------------------------
+    server.tool(
+        "get_bridge_logs",
+        "Antigravity MCP Bridge の拡張機能側のログを取得し、エージェントの実行状況やエラーを自己診断する。",
+        {
+            lines: z.number().optional().describe("取得する直近のログ行数（デフォルト100）"),
+        },
+        async ({ lines }) => {
+            const response = await wsClient.sendRequest(BRIDGE_METHODS.GET_LOGS, { lines });
+
+            if (isErrorResponse(response)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Error: ${response.error.message}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            const result = response.result as { logs: string[] };
+            return {
+                content: [
+                    {
+                        type: "text" as const,
+                        text: result.logs.join("\n"),
+                    },
+                ],
+            };
+        }
+    );
+
     return server;
 }
+
+import type { WorkspaceEventParams } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 
 /**
  * MCP サーバーを Stdio トランスポートで起動する。
  */
 export async function startMcpServer(wsClient: WsClient): Promise<void> {
     const server = createMcpServer(wsClient);
+
+    wsClient.on(BRIDGE_METHODS.WORKSPACE_EVENT, (params: WorkspaceEventParams) => {
+        server.server.sendLoggingMessage({
+            level: "info",
+            data: `[Workspace Event] ${params.type}: ${params.path}`,
+        }).catch((err: unknown) => {
+            console.error("[Bridge CLI] Failed to send logging message:", err);
+        });
+    });
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("[Bridge CLI] MCP server started (stdio transport)");

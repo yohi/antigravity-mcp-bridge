@@ -5,7 +5,7 @@ import type {
     BridgeResponse,
     BridgeMethod,
 } from "@antigravity-mcp-bridge/shared";
-import { isBridgeResponse, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
+import { isBridgeResponse, isBridgeNotification, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 
@@ -55,6 +55,12 @@ export class WsClient extends EventEmitter {
             this.ws.on("message", (data: WebSocket.RawData) => {
                 try {
                     const parsed = JSON.parse(data.toString());
+
+                    if (isBridgeNotification(parsed)) {
+                        this.emit(parsed.method, parsed.params);
+                        return;
+                    }
+
                     if (!isBridgeResponse(parsed)) {
                         console.error(
                             `[Bridge CLI] Invalid response format: must be a valid JSON-RPC 2.0 response`
