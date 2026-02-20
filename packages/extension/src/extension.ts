@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import * as path from "path";
 import * as fs from "fs";
 import { BridgeWebSocketServer } from "./server";
-import { formatUnknownError, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
 let wsServer: BridgeWebSocketServer | undefined;
 
@@ -93,7 +93,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     }
                 });
             } catch (e) {
-                // Ignore errors reading the file
+                const err = e as NodeJS.ErrnoException;
+                if (err.code === "ENOENT" || err.code === "FileNotFound") {
+                    // Ignore file not found
+                } else {
+                    logger.appendLine(`[MCP Bridge] Failed to read .antigravityignore: ${e instanceof Error ? e.message : String(e)}`);
+                }
             }
         }
         return ignoreSet;
@@ -167,9 +172,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
     };
 
-    watcher.onDidCreate((uri) => broadcastEvent("file_created", uri));
-    watcher.onDidChange((uri) => broadcastEvent("file_changed", uri));
-    watcher.onDidDelete((uri) => broadcastEvent("file_deleted", uri));
+    watcher.onDidCreate((uri) =>
+        broadcastEvent("file_created", uri).catch((e) =>
+            logger.appendLine(`[MCP Bridge] Error broadcasting file_created for ${uri.fsPath}: ${e instanceof Error ? e.message : String(e)}`)
+        )
+    );
+    watcher.onDidChange((uri) =>
+        broadcastEvent("file_changed", uri).catch((e) =>
+            logger.appendLine(`[MCP Bridge] Error broadcasting file_changed for ${uri.fsPath}: ${e instanceof Error ? e.message : String(e)}`)
+        )
+    );
+    watcher.onDidDelete((uri) =>
+        broadcastEvent("file_deleted", uri).catch((e) =>
+            logger.appendLine(`[MCP Bridge] Error broadcasting file_deleted for ${uri.fsPath}: ${e instanceof Error ? e.message : String(e)}`)
+        )
+    );
 
     context.subscriptions.push(watcher);
 
