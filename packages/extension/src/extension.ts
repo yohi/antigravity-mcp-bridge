@@ -54,10 +54,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "antigravity.sendPromptToAgentPanel",
-            (payload: { action: string; text: string }) => {
-                const redactedText = payload.text ? `${payload.text.substring(0, 20)}...[REDACTED]` : "[EMPTY]";
-                outputChannel.appendLine(`[MCP Bridge] Received agent prompt: ${redactedText}`);
-                vscode.window.showInformationMessage(`Agent prompt received`);
+            (payload?: { action?: string; text?: string }) => {
+                if (typeof payload?.text === "string") {
+                    outputChannel.appendLine("[MCP Bridge] Agent prompt received");
+                    vscode.window.showInformationMessage("Agent prompt received");
+                } else {
+                    outputChannel.appendLine("[MCP Bridge] Invalid agent prompt received");
+                }
             }
         )
     );
