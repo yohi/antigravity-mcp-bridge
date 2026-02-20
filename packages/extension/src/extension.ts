@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
 import * as path from "path";
-import * as fs from "fs";
 import { BridgeWebSocketServer } from "./server";
 import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
@@ -113,12 +112,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Initialize cache at startup
     loadIgnoreDirs().then((dirs) => {
         cachedIgnoreDirs = dirs;
+    }).catch((e) => {
+        logger.appendLine(`[MCP Bridge] Error initializing ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
+        cachedIgnoreDirs = new Set([".git", "node_modules", "dist", "out"]);
     });
 
     const refreshCache = () => {
-        cachedIgnoreDirs = undefined;
+        cachedIgnoreDirs = undefined; // Temporarily unset so concurrent calls know it's refreshing
         loadIgnoreDirs().then((dirs) => {
             cachedIgnoreDirs = dirs;
+        }).catch((e) => {
+            logger.appendLine(`[MCP Bridge] Error refreshing ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
+            cachedIgnoreDirs = new Set([".git", "node_modules", "dist", "out"]);
         });
     };
 
