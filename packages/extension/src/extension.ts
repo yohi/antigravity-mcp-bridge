@@ -79,12 +79,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         const ignoreSet = new Set([...defaultIgnoreDirs, ...configuredIgnoreDirs]);
-        const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (rootPath) {
-            const ignoreFilePath = path.join(rootPath, ".antigravityignore");
+        const workspaceFolderUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (workspaceFolderUri) {
+            const ignoreFileUri = vscode.Uri.joinPath(workspaceFolderUri, ".antigravityignore");
             try {
                 // Read file asynchronously
-                const content = await vscode.workspace.fs.readFile(vscode.Uri.file(ignoreFilePath));
+                const content = await vscode.workspace.fs.readFile(ignoreFileUri);
                 const fileContent = Buffer.from(content).toString("utf8");
                 fileContent.split(/\r?\n/).forEach((line) => {
                     const trimmed = line.trim();
