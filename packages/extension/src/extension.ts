@@ -88,9 +88,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!rootPath) return;
 
         // Skip files outside the primary workspace folder
-        if (!uri.fsPath.startsWith(rootPath)) return;
-
         let relativePath = path.relative(rootPath, uri.fsPath);
+        if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return;
+
         relativePath = relativePath.split(path.sep).join("/");
 
         wsServer.broadcast({

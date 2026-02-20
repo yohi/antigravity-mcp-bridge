@@ -177,6 +177,7 @@ export function isBridgeNotification(data: unknown): data is BridgeNotification 
     const obj = data as Record<string, unknown>;
     return (
         obj.jsonrpc === "2.0" &&
+        (!("id" in obj) || obj.id === null || obj.id === undefined) &&
         typeof obj.method === "string" &&
         !("result" in obj) &&
         !("error" in obj)
