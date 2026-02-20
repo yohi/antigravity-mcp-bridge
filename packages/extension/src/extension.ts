@@ -93,8 +93,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     }
                 });
             } catch (e) {
-                const err = e as NodeJS.ErrnoException;
-                if (err.code === "ENOENT" || err.code === "FileNotFound") {
+                if (e instanceof vscode.FileSystemError && e.code === "FileNotFound") {
                     // Ignore file not found
                 } else {
                     logger.appendLine(`[MCP Bridge] Failed to read .antigravityignore: ${e instanceof Error ? e.message : String(e)}`);
