@@ -93,9 +93,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         relativePath = relativePath.split(path.sep).join("/");
 
-        // Skip noisy directories
-        const ignoreDirs = [".git", "node_modules", "dist", "out"];
-        if (relativePath.split("/").some(segment => ignoreDirs.includes(segment))) {
+        // Skip noisy directories using a merged ignore list
+        const defaultIgnoreDirs = [".git", "node_modules", "dist", "out"];
+        let configuredIgnoreDirs = vscode.workspace.getConfiguration("antigravity").get<string[]>("ignoreDirs");
+        if (!Array.isArray(configuredIgnoreDirs)) {
+            configuredIgnoreDirs = [];
+        }
+
+        const ignoreDirs = new Set([...defaultIgnoreDirs, ...configuredIgnoreDirs]);
+
+        // Optional project ignore file
+        const ignoreFilePath = path.join(rootPath, ".antigravityignore");
+        if (fs.existsSync(ignoreFilePath)) {
+            try {
+                const fileContent = fs.readFileSync(ignoreFilePath, "utf8");
+                fileContent.split(/\r?\n/).forEach(line => {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith("#")) {
+                        ignoreDirs.add(trimmed);
+                    }
+                });
+            } catch (e) {
+                // Ignore errors reading the file
+            }
+        }
+
+        if (relativePath.split("/").some(segment => ignoreDirs.has(segment))) {
             return;
         }
 
