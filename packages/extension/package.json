@@ -43,7 +43,18 @@
                     "description": "読み込み可能な最大バイト数（デフォルト100KB）"
                 }
             }
-        }
+        },
+        "commands": [
+            {
+                "command": "antigravity-mcp-bridge.testPrompt",
+                "title": "Antigravity MCP Bridge: Test Prompt"
+            },
+            {
+                "command": "antigravity.sendPromptToAgentPanel",
+                "title": "Send Prompt to Agent Panel",
+                "category": "Antigravity"
+            }
+        ]
     },
     "scripts": {
         "build": "npx tsc -p ./",
@@ -52,6 +63,7 @@
         "clean": "rm -rf out"
     },
     "dependencies": {
+        "@antigravity-mcp-bridge/shared": "^1.0.0",
         "ws": "^8.18.0"
     },
     "devDependencies": {

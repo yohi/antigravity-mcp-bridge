@@ -5,47 +5,31 @@
  * 共通定数を提供する。
  */
 
-// ============================================================
-// JSON-RPC 2.0 Message Types (Extension <-> CLI)
-// ============================================================
+import {
+    BRIDGE_METHODS,
+    BridgeMethod,
+    AgentDispatchParams,
+    AgentDispatchResult,
+    BridgeRequest,
+    BridgeResponseSuccess,
+    BridgeResponseError,
+    BridgeResponse,
+    isBridgeResponse,
+    isErrorResponse,
+} from "@antigravity-mcp-bridge/shared";
 
-export interface BridgeRequest {
-    jsonrpc: "2.0";
-    id: number;
-    method: BridgeMethod;
-    params?: Record<string, unknown>;
-}
-
-export interface BridgeResponseSuccess {
-    jsonrpc: "2.0";
-    id: number;
-    result: unknown;
-}
-
-export interface BridgeResponseError {
-    jsonrpc: "2.0";
-    id: number;
-    error: {
-        code: number;
-        message: string;
-        data?: unknown;
-    };
-}
-
-export type BridgeResponse = BridgeResponseSuccess | BridgeResponseError;
-
-// ============================================================
-// Bridge Methods
-// ============================================================
-
-export const BRIDGE_METHODS = {
-    FS_LIST: "fs/list",
-    FS_READ: "fs/read",
-    FS_WRITE: "fs/write",
-    LLM_CHAT: "llm/chat",
-} as const;
-
-export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
+export {
+    BRIDGE_METHODS,
+    BridgeMethod,
+    AgentDispatchParams,
+    AgentDispatchResult,
+    BridgeRequest,
+    BridgeResponseSuccess,
+    BridgeResponseError,
+    BridgeResponse,
+    isBridgeResponse,
+    isErrorResponse,
+};
 
 // ============================================================
 // Error Codes
@@ -62,6 +46,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** Agent Dispatch Failed */
+    AGENT_DISPATCH_FAILED: -32006,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;
@@ -98,29 +84,6 @@ export interface FsWriteResult {
     message: string;
 }
 
-export interface LlmChatParams {
-    prompt: string;
-    model?: string;
-    context?: string;
-}
-
-export interface LlmChatResult {
-    content: string;
-    model: string;
-}
-
 // ============================================================
 // Helpers
 // ============================================================
-
-export function isBridgeResponse(data: unknown): data is BridgeResponse {
-    if (typeof data !== "object" || data === null) return false;
-    const obj = data as Record<string, unknown>;
-    return obj.jsonrpc === "2.0" && typeof obj.id === "number";
-}
-
-export function isErrorResponse(
-    response: BridgeResponse
-): response is BridgeResponseError {
-    return "error" in response;
-}

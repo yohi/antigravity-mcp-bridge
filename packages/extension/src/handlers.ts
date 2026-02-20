@@ -10,9 +10,12 @@ import type {
     FsReadResult,
     FsWriteParams,
     FsWriteResult,
+    AgentDispatchParams,
+    AgentDispatchResult,
 } from "./shared/types";
 import { BRIDGE_METHODS, ERROR_CODES } from "./shared/types";
 import type { ServerConfig } from "./server";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -40,6 +43,15 @@ export async function handleMessage(
                     await handleFsWrite(params as unknown as FsWriteParams, config)
                 );
 
+            case BRIDGE_METHODS.AGENT_DISPATCH:
+                return success(
+                    id,
+                    await handleAgentDispatch(
+                        params as unknown as AgentDispatchParams,
+                        config
+                    )
+                );
+
             default:
                 return error(id, -32601, `Method not found: ${method}`);
         }
@@ -47,7 +59,7 @@ export async function handleMessage(
         if (err instanceof BridgeError) {
             return error(id, err.code, err.message);
         }
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatUnknownError(err);
         return error(id, -32603, `Internal error: ${errorMessage}`);
     }
 }
@@ -178,6 +190,40 @@ async function handleFsWrite(
     };
 }
 
+async function handleAgentDispatch(
+    params: AgentDispatchParams,
+    config: ServerConfig
+): Promise<AgentDispatchResult> {
+    if (!params?.prompt) {
+        throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
+    }
+
+    try {
+        await vscode.commands.executeCommand(
+            "antigravity.sendPromptToAgentPanel",
+            { action: "sendMessage", text: params.prompt }
+        );
+    } catch (err: unknown) {
+        config.outputChannel.appendLine(
+            `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
+        );
+        throw createBridgeError(
+            ERROR_CODES.AGENT_DISPATCH_FAILED,
+            `Failed to dispatch agent task: ${formatUnknownError(err)}`
+        );
+    }
+
+    const preview =
+        params.prompt.length > 80
+            ? `${params.prompt.slice(0, 80)}...`
+            : params.prompt;
+    config.outputChannel.appendLine(
+        `[MCP Bridge] Agent task dispatched: "${preview}"`
+    );
+
+    return { success: true, message: `Agent task dispatched: "${preview}"` };
+}
+
 // ============================================================
 // Utilities
 // ============================================================
@@ -268,10 +314,10 @@ function createBridgeError(code: number, message: string): BridgeError {
 // Response Helpers
 // ============================================================
 
-function success(id: number, result: unknown): BridgeResponse {
+function success(id: number | string | null, result: unknown): BridgeResponse {
     return { jsonrpc: "2.0", id, result };
 }
 
-function error(id: number, code: number, message: string): BridgeResponse {
+function error(id: number | string | null, code: number, message: string): BridgeResponse {
     return { jsonrpc: "2.0", id, error: { code, message } };
 }

@@ -42,6 +42,7 @@ export const BRIDGE_METHODS = {
     FS_LIST: "fs/list",
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
+    AGENT_DISPATCH: "agent/dispatch",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -61,6 +62,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** Agent Dispatch Failed */
+    AGENT_DISPATCH_FAILED: -32006,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;
@@ -95,6 +98,15 @@ export interface FsWriteParams {
 export interface FsWriteResult {
     success: boolean;
     message: string;
+}
+
+export interface AgentDispatchParams {
+    prompt: string;
+}
+
+export interface AgentDispatchResult {
+    success: boolean;
+    message?: string;
 }
 
 // ============================================================

@@ -7,6 +7,7 @@ import type {
     BridgeMethod,
 } from "./shared/types";
 import { handleMessage } from "./handlers";
+import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 export interface ServerConfig {
     port: number;
@@ -59,8 +60,7 @@ export class BridgeWebSocketServer {
                     const response = await handleMessage(message, this.config);
                     ws.send(JSON.stringify(response));
                 } catch (err: unknown) {
-                    const errorMessage =
-                        err instanceof Error ? err.message : String(err);
+                    const errorMessage = formatUnknownError(err);
                     this.config.outputChannel.appendLine(
                         `[MCP Bridge] Error processing message: ${errorMessage}`
                     );
