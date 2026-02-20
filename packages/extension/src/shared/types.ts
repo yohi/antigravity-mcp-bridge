@@ -14,6 +14,8 @@ import {
     BridgeResponseSuccess,
     BridgeResponseError,
     BridgeResponse,
+    isBridgeResponse,
+    isErrorResponse,
 } from "@antigravity-mcp-bridge/shared";
 
 export {
@@ -25,6 +27,8 @@ export {
     BridgeResponseSuccess,
     BridgeResponseError,
     BridgeResponse,
+    isBridgeResponse,
+    isErrorResponse,
 };
 
 // ============================================================
@@ -83,18 +87,3 @@ export interface FsWriteResult {
 // ============================================================
 // Helpers
 // ============================================================
-
-export function isBridgeResponse(data: unknown): data is BridgeResponse {
-    if (typeof data !== "object" || data === null) return false;
-    const obj = data as Record<string, unknown>;
-    return (
-        obj.jsonrpc === "2.0" &&
-        (typeof obj.id === "number" || typeof obj.id === "string" || obj.id === null)
-    );
-}
-
-export function isErrorResponse(
-    response: BridgeResponse
-): response is BridgeResponseError {
-    return "error" in response;
-}

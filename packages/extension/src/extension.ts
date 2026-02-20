@@ -51,7 +51,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             async () => {
                 outputChannel.show(true);
                 outputChannel.appendLine(`\n[MCP Bridge] === Agent Dispatch Test ===`);
-                const tp = "Reply with exactly one word: HELLO";
+                const tp = { action: "sendMessage", text: "Reply with exactly one word: HELLO" };
 
                 outputChannel.appendLine(
                     `[MCP Bridge] Testing antigravity.sendPromptToAgentPanel...`
@@ -83,9 +83,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "antigravity.sendPromptToAgentPanel",
-            (prompt: string) => {
-                outputChannel.appendLine(`[MCP Bridge] Received agent prompt: ${prompt}`);
-                vscode.window.showInformationMessage(`Agent Prompt: ${prompt}`);
+            (payload: { action: string; text: string }) => {
+                outputChannel.appendLine(`[MCP Bridge] Received agent prompt: ${payload.text}`);
+                vscode.window.showInformationMessage(`Agent Prompt: ${payload.text}`);
             }
         )
     );

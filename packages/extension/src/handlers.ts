@@ -201,7 +201,7 @@ async function handleAgentDispatch(
     try {
         await vscode.commands.executeCommand(
             "antigravity.sendPromptToAgentPanel",
-            params.prompt
+            { action: "sendMessage", text: params.prompt }
         );
     } catch (err: unknown) {
         config.outputChannel.appendLine(
