@@ -8,6 +8,7 @@ import type {
 import { isBridgeResponse, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
+
 /**
  * WebSocket クライアント。
  * Extension（WebSocket サーバー）への接続と JSON-RPC リクエスト/レスポンスの

@@ -63,7 +63,7 @@ export const ERROR_CODES = {
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
     /** Agent Dispatch Failed */
-    AGENT_DISPATCH_FAILED: -32006,
+    AGENT_DISPATCH_FAILED: -32007,
     /** Invalid Params */
     INVALID_PARAMS: -32602,
 } as const;

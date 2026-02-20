@@ -12,7 +12,7 @@ import type { WsClient } from "./ws-client.js";
 export function createMcpServer(wsClient: WsClient): McpServer {
     const server = new McpServer({
         name: "antigravity-mcp-bridge",
-        version: "1.2.0",
+        version: "1.3.0",
     });
 
     // -------------------------------------------------------
@@ -133,8 +133,8 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     server.tool(
         "dispatch_agent_task",
         "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
-            "レスポンスは返らないため、結果はファイル変更で確認すること。" +
-            "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。",
+        "レスポンスは返らないため、結果はファイル変更で確認すること。" +
+        "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。",
         {
             prompt: z.string().describe("エージェントに送信するプロンプト"),
         },
