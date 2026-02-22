@@ -103,30 +103,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return ignoreSet;
     };
 
-    const refreshCache = () => {
-        if (cachedIgnoreDirsPromise) {
-            return;
-        }
-        cachedIgnoreDirsPromise = loadIgnoreDirs().catch((e) => {
-            logger.appendLine(`[MCP Bridge] Error loading ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
-            return new Set([".git", "node_modules", "dist", "out"]);
-        });
-        cachedIgnoreDirsPromise.then((dirs) => {
-            cachedIgnoreDirs = dirs;
-        }).finally(() => {
-            cachedIgnoreDirsPromise = undefined;
-        });
-    };
-
-    const getIgnoreDirs = async (): Promise<Set<string>> => {
+    const refreshCache = (): Promise<Set<string>> => {
         if (cachedIgnoreDirsPromise) {
             return cachedIgnoreDirsPromise;
         }
+        cachedIgnoreDirsPromise = (async () => {
+            try {
+                const dirs = await loadIgnoreDirs();
+                cachedIgnoreDirs = dirs;
+                return dirs;
+            } catch (e) {
+                logger.appendLine(`[MCP Bridge] Error loading ignore dirs cache: ${e instanceof Error ? e.message : String(e)}`);
+                const fallback = new Set([".git", "node_modules", "dist", "out"]);
+                cachedIgnoreDirs = fallback;
+                return fallback;
+            } finally {
+                cachedIgnoreDirsPromise = undefined;
+            }
+        })();
+        return cachedIgnoreDirsPromise;
+    };
+
+    const getIgnoreDirs = async (): Promise<Set<string>> => {
         if (cachedIgnoreDirs) {
             return cachedIgnoreDirs;
         }
-        refreshCache();
-        return cachedIgnoreDirsPromise!;
+        return refreshCache();
     };
 
     // Initialize cache at startup
@@ -214,3 +216,4 @@ export function deactivate(): void {
 function generateToken(): string {
     return crypto.randomBytes(32).toString("hex");
 }
+
