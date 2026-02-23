@@ -23,7 +23,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // トークンが未設定の場合は自動生成
     if (!token) {
         token = generateToken();
-        logger.appendLine(`[MCP Bridge] Generated token: ${token}`);
+        outputChannel.appendLine(`[MCP Bridge] Generated token: ${token}`);
         logger.appendLine(
             `[MCP Bridge] Set "antigravity.mcp.token" in settings to use a fixed token.`
         );
@@ -45,6 +45,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         `[MCP Bridge] WebSocket server started on ws://127.0.0.1:${port}`
     );
     logger.appendLine(`[MCP Bridge] Read-only mode: ${readOnly}`);
+    logger.appendLine(`[MCP Bridge] Authorization required: ${requireWriteApproval}`);
     logger.appendLine(
         `[MCP Bridge] Max file size: ${maxFileSize} bytes`
     );
