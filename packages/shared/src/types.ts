@@ -43,6 +43,8 @@ export const BRIDGE_METHODS = {
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
     AGENT_DISPATCH: "agent/dispatch",
+    WORKSPACE_EVENT: "workspace/event",
+    GET_LOGS: "bridge/logs",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -62,6 +64,8 @@ export const ERROR_CODES = {
     READ_ONLY_VIOLATION: -32004,
     /** Path Outside Workspace */
     PATH_OUTSIDE_WORKSPACE: -32005,
+    /** User Rejected the Action */
+    USER_REJECTED: -32006,
     /** Agent Dispatch Failed */
     AGENT_DISPATCH_FAILED: -32007,
     /** Invalid Params */
@@ -109,6 +113,26 @@ export interface AgentDispatchResult {
     message?: string;
 }
 
+export interface WorkspaceEventParams {
+    type: "file_created" | "file_changed" | "file_deleted";
+    path: string;
+}
+
+export interface BridgeGetLogsParams {
+    lines?: number;
+}
+
+export interface BridgeGetLogsResult {
+    logs: string[];
+}
+
+export interface BridgeNotification {
+    jsonrpc: "2.0";
+    id?: null | undefined;
+    method: BridgeMethod;
+    params?: Record<string, unknown>;
+}
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -146,6 +170,18 @@ export function isBridgeResponse(data: unknown): data is BridgeResponse {
     }
 
     return true;
+}
+
+export function isBridgeNotification(data: unknown): data is BridgeNotification {
+    if (typeof data !== "object" || data === null) return false;
+    const obj = data as Record<string, unknown>;
+    return (
+        obj.jsonrpc === "2.0" &&
+        (!("id" in obj) || obj.id === null || obj.id === undefined) &&
+        typeof obj.method === "string" &&
+        !("result" in obj) &&
+        !("error" in obj)
+    );
 }
 
 export function isErrorResponse(
