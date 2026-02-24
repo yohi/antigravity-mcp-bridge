@@ -303,22 +303,24 @@ Antigravity の応答は非同期のストリーミング形式であるため�
 
 ## 11. 次世代モデルおよび競合モデルのサポート状況
 
-コード内部の定数定義および UI 定義から、Antigravity が将来的に（または特定環境で）サポートしている次世代モデルの ID 群が判明しました。
+コード内部の定数定義および実際の運用環境において、Antigravity がサポートしている最新世代のモデル ID 群は以下の通りです。現時点での「利用可能モデル」として以下のラインナップが確定しています。
 
-### Gemini 3 シリーズ（最新世代）
+### 現時点での公式利用可能モデル
 
-- **Gemini 3 Flash**: `GOOGLE_GEMINI_INFINITYJET` (画面表示名: `Gemini 3 Flash Image`)
-- **Gemini 3 Pro**: `GOOGLE_GEMINI_INFINITYBLOOM`
-- **Gemini 3 Thinking**: `GOOGLE_GEMINI_RIFTRUNNER` (`RIFTRUNNER_THINKING_HIGH` / `LOW`)
+ユーザーインターフェースおよび内部推論パスでアクティブになっている主要モデル：
 
-### 競合他社モデルの予約 ID
+- **Gemini 3.1 Pro (High)**: 高度な推論と大規模コンテキスト（内部 ID: `RIFTRUNNER_THINKING_HIGH` 相当）
+- **Gemini 3.1 Pro (Low)**: 推論コストと速度のバランス（内部 ID: `RIFTRUNNER_THINKING_LOW` 相当）
+- **Gemini 3 Flash**: 超高速レスポンス（内部 ID: `INFINITYJET` 相当）
+- **Claude Sonnet 4.6 (Thinking)**: 強力な思考能力を持つ最新の Sonnet（内部 ID: `CLAUDE_4_5_SONNET_THINKING` 相当）
+- **Claude Opus 4.6 (Thinking)**: 最上位の創造性と理解力（内部 ID: `CLAUDE_4_OPUS_THINKING` 相当）
+- **GPT-OSS 120B (Medium)**: 独自チューニングされた大規模オープンソースモデル（内部 ID: `OPENAI_GPT_OSS_120B_MEDIUM`）
 
-驚くべきことに、Antigravity の内部定義には競合他社の次世代未発表モデルを含む ID が既に予約されています。これにより、マルチモデルプラットフォームとしての将来的な拡張性が示唆されています。
+### 内部 ID と表示バージョンの関係
 
-- **Claude 4 シリーズ**: `CLAUDE_4_SONNET`, `CLAUDE_4_OPUS`, `CLAUDE_4_5_SONNET`, `CLAUDE_4_5_HAIKU`
-- **超大規模オープンソースモデル**: `OPENAI_GPT_OSS_120B_MEDIUM`
+調査により、コード上の定数名（例: `CLAUDE_4_5` や `GEMINI_3`）と、実際にフロントエンドで掲示されるバージョン（`4.6` や `3.1`）には乖離がある場合があることが判明しました。これは、IDE 側の抽象化 ID を変更することなく、バックエンド側で最新マイナーアップデート（3 -> 3.1, 4.5 -> 4.6 等）を適用しているためと考えられます。
 
-これらの ID を `modelId` パラメータに指定することで、インフラ側が対応していれば直ちに最新世代のモデルによる推論へと切り替えることが可能な設計になっています。
+これらのモデルはすべて `modelId` パラメータによって、MCP 経由の外部リクエストから直接指定して制御することが可能です。
 
 ---
 
