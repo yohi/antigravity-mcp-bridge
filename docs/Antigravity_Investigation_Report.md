@@ -164,7 +164,8 @@ Language Serverの管理やトラブルシューティング用です。
 
 ### UIカスタマイズ・機能補助 (Customization & Utilities)
 
-* `antigravity.customizeAppIcon`: Antigravity IDEのアプリケーションアイコン（Dock等）を変更する。
+- `antigravity.customizeAppIcon`: Antigravity IDEのアプリケーションアイコン（Dock等）を変更する。
+
 - `antigravity.generateCommitMessage`: 差分（Git）を解析し、AIによるコミットメッセージを生成する。
 - `antigravity.cancelGenerateCommitMessage`: 生成処理をキャンセルする。
 - `antigravity.createWorkflow` / `createGlobalWorkflow`: エージェントが実行するワークフローファイル（`.md`）を作成する。
@@ -246,4 +247,81 @@ UI（Electron/React）と推論バックエンド（Language Server）は、**Co
 - **Planner の自律反復**: 複雑な要求に対してPlannerアルゴリズムが動作します。「計画→実行→検証→再計画」のループを回し、最大試行回数（`reached max iterations for planner`）に達するまで自律的に行動を継続します。
 - **CORTEX_TRAJECTORY_SOURCE**: AIの思考の起点がトラッキングされており、ユーザーのアクティブな指示（`INTERACTIVE_CASCADE`）なのか、非同期によるタスク（`ASYNC_PRR` など）からの起動なのかが分類されています。
 
-以上が、Antigravity IDEを構成する内部コマンド群とディープな仕様の全容です。これらは「VS Codeの単なるラッパー」としてではなく、「UI・推論・行動が三位一体で統合された次世代AI開発プラットフォーム」として構築されています。
+---
+
+## 9. モデル選定とチャット送信コマンドの仕様
+
+AIとの対話を司る `antigravity.sendTextToChat` コマンドおよびモデル指定に関する詳細仕様です。
+
+### チャット送信 (`antigravity.sendTextToChat`)
+
+このコマンドは、エディタや各種UIコンポーネントからAIチャットへメッセージを送信する際の基盤です。引数として以下のオブジェクト構造をサポートしています。
+
+- **引数構造 (Payload)**:
+  - `message`: 送信するプロンプト（文字列）。
+  - `modelId`: 使用するモデルの識別子（オプション）。明示的に指定することで、ユーザーのデフォルト設定を上書きして特定のモデルで推論させることが可能です。
+  - `attachedContext`: プロンプトに付随させる追加のコンテキストデータ。
+  - `locationData`: メッセージ送信時のカーソル位置やファイル情報。
+
+### 指定可能な内部モデルID
+
+バックエンド（Language Server）およびUI層で定義されている主要なモデル識別子です。
+
+- **Google Gemini シリーズ**:
+  - `GOOGLE_GEMINI_2_5_PRO`: 標準的な高性能モデル。
+  - `GOOGLE_GEMINI_2_5_FLASH`: 高速レスポンス向けモデル。
+  - `GOOGLE_GEMINI_2_5_FLASH_THINKING`: 推論プロセスを露出・強化する思考型モデル。
+- **特殊・実験用モデル**:
+  - `GOOGLE_GEMINI_COMPUTER_USE_EXPERIMENTAL`: ブラウザ操作やOSレベルの操作に特化したプロトタイプ。
+  - `GOOGLE_GEMINI_INTERNAL_BYOM`: カスタムエンドポイント（Bring Your Own Model）向けの内部プロキシ。
+
+### モデル選択の永続化
+
+ユーザーがUI（モデル選択ドロップダウン等）からモデルを変更すると、`Memory` および `Brain` 内のセッション状態に `modelId` が記録され、以降の `executeCascadeAction` 時にはその ID が優先的に参照される仕組みになっています。
+
+---
+
+---
+
+## 10. Antigravity を LLM サービス（MCP）として利用するための仕様
+
+Antigravity 自身を MCP サーバーのバックエンドとして振る舞わせる（外部のリクエストを Antigravity で処理し結果を返す）ための統合仕様です。
+
+### 外部リクエストの注入
+
+外部拡張機能から Antigravity の推論エンジンを叩くには、以下のフローが必要です。
+
+- **リクエスト送信**: `antigravity.sendTextToChat` または `ChatService#sendRequest` を直接呼び出します。
+- **サイレント実行**: ユーザーインターフェース（パネル）への出力を抑制し、純粋な LLM 生成結果のみを必要とする場合は、`request_type` を適切に設定し `agentIdSilent` フラグを有効化します。
+
+### 結果のコールバック受信
+
+Antigravity の応答は非同期のストリーミング形式であるため、標準のコマンド戻り値では受け取れません。
+
+- **フックポイント**: `ChatModel` クラスの `onDidAcceptResponse` または `onDidReceiveResponse` イベントエミッタを購読します。
+- **データ構造**: 受信した `GetChatMessageResponse` から `deltaText` を累積し、`stopReason` が発生した時点の累積文字列を最終的な結果として外部へ返します。
+
+---
+
+## 11. 次世代モデルおよび競合モデルのサポート状況
+
+コード内部の定数定義および UI 定義から、Antigravity が将来的に（または特定環境で）サポートしている次世代モデルの ID 群が判明しました。
+
+### Gemini 3 シリーズ（最新世代）
+
+- **Gemini 3 Flash**: `GOOGLE_GEMINI_INFINITYJET` (画面表示名: `Gemini 3 Flash Image`)
+- **Gemini 3 Pro**: `GOOGLE_GEMINI_INFINITYBLOOM`
+- **Gemini 3 Thinking**: `GOOGLE_GEMINI_RIFTRUNNER` (`RIFTRUNNER_THINKING_HIGH` / `LOW`)
+
+### 競合他社モデルの予約 ID
+
+驚くべきことに、Antigravity の内部定義には競合他社の次世代未発表モデルを含む ID が既に予約されています。これにより、マルチモデルプラットフォームとしての将来的な拡張性が示唆されています。
+
+- **Claude 4 シリーズ**: `CLAUDE_4_SONNET`, `CLAUDE_4_OPUS`, `CLAUDE_4_5_SONNET`, `CLAUDE_4_5_HAIKU`
+- **超大規模オープンソースモデル**: `OPENAI_GPT_OSS_120B_MEDIUM`
+
+これらの ID を `modelId` パラメータに指定することで、インフラ側が対応していれば直ちに最新世代のモデルによる推論へと切り替えることが可能な設計になっています。
+
+---
+
+以上が、Antigravity IDEを構成する内部コマンド群とディープな仕様の全容です。これらは「VS Codeの単なるラッパー」としてではなく、「UI・推論・行動が三位一体で統合された次世代AI開発プラットフォーム」として構築されており、Gemini 3 を含む次世代モデルや MCP 経由の外部連携をも完全を見据えた設計であることが確認されました。
