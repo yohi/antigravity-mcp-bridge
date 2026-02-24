@@ -281,8 +281,6 @@ AIとの対話を司る `antigravity.sendTextToChat` コマンドおよびモデ
 
 ---
 
----
-
 ## 10. Antigravity を LLM サービス（MCP）として利用するための仕様
 
 Antigravity 自身を MCP サーバーのバックエンドとして振る舞わせる（外部のリクエストを Antigravity で処理し結果を返す）ための統合仕様です。
