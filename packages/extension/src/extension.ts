@@ -50,24 +50,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         `[MCP Bridge] Max file size: ${maxFileSize} bytes`
     );
 
-    // 注意: この "antigravity.sendPromptToAgentPanel" のモック登録は、
-    // Antigravity IDE 外での開発/テスト時のフォールバックとして使用され、意図的に実際の IDE コマンドを上書きします。
-    // 本番環境や Antigravity IDE 内で実行する場合は、実際のコマンドを使用する必要があります。
-    // このモックは handlers.ts で vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", ...) と
-    // 呼び出される開発時のローカルテストにて実行されます。
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            "antigravity.sendPromptToAgentPanel",
-            (payload?: { action?: string; text?: string }) => {
-                if (typeof payload?.text === "string") {
-                    logger.appendLine("[MCP Bridge] Agent prompt received");
-                    vscode.window.showInformationMessage("Agent prompt received");
-                } else {
-                    logger.appendLine("[MCP Bridge] Invalid agent prompt received");
+    const agentCommandId = "antigravity.sendPromptToAgentPanel";
+    const availableCommands = await vscode.commands.getCommands(true);
+    const hasNativeAgentCommand = availableCommands.includes(agentCommandId);
+
+    if (hasNativeAgentCommand) {
+        logger.appendLine(`[MCP Bridge] Native command detected: ${agentCommandId}`);
+    } else {
+        logger.appendLine(
+            `[MCP Bridge] Native command not found. Registering fallback mock: ${agentCommandId}`
+        );
+        context.subscriptions.push(
+            vscode.commands.registerCommand(
+                agentCommandId,
+                (payload?:
+                    | string
+                    | {
+                        action?: string;
+                        text?: string;
+                        modelId?: string;
+                        model?: string;
+                    },
+                    options?: {
+                        modelId?: string;
+                        model?: string;
+                    }) => {
+                    const text = typeof payload === "string" ? payload : payload?.text;
+                    const modelFromPayload = typeof payload === "string"
+                        ? undefined
+                        : payload?.modelId ?? payload?.model;
+                    const model = modelFromPayload ?? options?.modelId ?? options?.model;
+                    if (typeof text === "string") {
+                        logger.appendLine(
+                            `[MCP Bridge] Agent prompt received${model ? ` (model: ${model})` : ""}`
+                        );
+                        vscode.window.showInformationMessage("Agent prompt received");
+                    } else {
+                        logger.appendLine("[MCP Bridge] Invalid agent prompt received");
+                    }
                 }
-            }
-        )
-    );
+            )
+        );
+    }
 
     let cachedIgnoreDirs: Set<string> | undefined;
     let cachedIgnoreDirsPromise: Promise<Set<string>> | undefined;
@@ -217,4 +241,3 @@ export function deactivate(): void {
 function generateToken(): string {
     return crypto.randomBytes(32).toString("hex");
 }
-

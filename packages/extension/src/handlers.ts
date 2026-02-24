@@ -15,7 +15,7 @@ import type {
     BridgeGetLogsParams,
     BridgeGetLogsResult,
 } from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS, ERROR_CODES } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
@@ -60,6 +60,12 @@ export async function handleMessage(
                     )
                 );
 
+            case BRIDGE_METHODS.AGENT_LIST_MODELS:
+                return success(id, await handleAgentListModels());
+
+            case BRIDGE_METHODS.IDE_DIAGNOSTICS:
+                return success(id, await handleIdeDiagnostics());
+
             default:
                 return error(id, -32601, `Method not found: ${method}`);
         }
@@ -69,6 +75,17 @@ export async function handleMessage(
         }
         const errorMessage = formatUnknownError(err);
         return error(id, -32603, `Internal error: ${errorMessage}`);
+    }
+}
+
+async function handleIdeDiagnostics(): Promise<unknown> {
+    try {
+        const diagnostics = await vscode.commands.executeCommand(
+            "antigravity.getDiagnostics"
+        );
+        return diagnostics;
+    } catch (err: unknown) {
+        throw new Error(`Failed to get IDE diagnostics: ${formatUnknownError(err)}`);
     }
 }
 
@@ -226,10 +243,40 @@ async function handleAgentDispatch(
         throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
     }
 
+    const promptText = params.prompt;
+    let selectedModel: string | undefined;
+
     try {
+        if (params.model) {
+            const selectionResult = await enforceInternalModelSelection(params.model, config);
+            selectedModel = selectionResult.selectedModel;
+            const attemptsSummary = selectionResult.attempts.length > 0
+                ? selectionResult.attempts.join(" | ")
+                : "<none>";
+
+            if (!selectionResult.applied) {
+                config.logger.appendLine(
+                    `[MCP Bridge] No internal model command applied for '${params.model}'. attempts=${attemptsSummary}`
+                );
+            } else if (!selectionResult.verified) {
+                config.logger.appendLine(
+                    `[MCP Bridge] Internal model command applied but verification is not conclusive for '${params.model}'. diagnostics='${selectionResult.diagnosticsModel ?? "<none>"}' attempts=${attemptsSummary}`
+                );
+            }
+        }
+
+        const commandArgs: [string, ...unknown[]] = [promptText];
+        if (params.model) {
+            commandArgs.push({
+                action: "sendMessage",
+                modelId: params.model,
+                model: params.model,
+            });
+        }
+
         await vscode.commands.executeCommand(
             "antigravity.sendPromptToAgentPanel",
-            { action: "sendMessage", text: params.prompt }
+            ...commandArgs
         );
     } catch (err: unknown) {
         config.logger.appendLine(
@@ -249,7 +296,194 @@ async function handleAgentDispatch(
         `[MCP Bridge] Agent task dispatched: "${preview}"`
     );
 
-    return { success: true, message: `Agent task dispatched: "${preview}"` };
+    const modelSuffix = selectedModel
+        ? ` (model: ${selectedModel})`
+        : params.model
+            ? ` (requested model: ${params.model})`
+            : "";
+    return {
+        success: true,
+        message: `Agent task dispatched${modelSuffix}: "${preview}"`,
+    };
+}
+
+async function enforceInternalModelSelection(
+    requestedModel: string,
+    config: ServerConfig
+): Promise<ModelSelectionResult> {
+    config.logger.appendLine(
+        `[MCP Bridge] Enforcing internal model selection: ${requestedModel}`
+    );
+
+    const availableCommands = await vscode.commands.getCommands(true);
+    const preferredCommands = [
+        "antigravity.setModel",
+        "antigravity.selectModel",
+        "antigravity.changeModel",
+        "antigravity.agentPanel.setModel",
+        "antigravity.agentPanel.selectModel",
+        "agCockpit.setModel",
+        "agCockpit.selectModel",
+        "agCockpit.refreshModelCache",
+    ];
+    const discoveredModelCommands = availableCommands.filter((commandId) =>
+        /(antigravity|agCockpit)/i.test(commandId) && /model/i.test(commandId)
+    );
+
+    const commandIdsToTry = Array.from(
+        new Set([
+            ...preferredCommands.filter((commandId) => availableCommands.includes(commandId)),
+            ...discoveredModelCommands,
+        ])
+    );
+
+    const attemptLogs: string[] = [];
+    let diagnosticsModel: string | undefined;
+    let applied = false;
+
+    for (const commandId of commandIdsToTry) {
+        const commandSucceeded = await tryModelSelectionCommand(
+            commandId,
+            requestedModel,
+            attemptLogs
+        );
+
+        if (!commandSucceeded) {
+            continue;
+        }
+
+        applied = true;
+        const verification = await verifyModelSelection(requestedModel);
+        diagnosticsModel = verification.selectedModel ?? diagnosticsModel;
+        config.logger.appendLine(
+            `[MCP Bridge] Model verification after ${commandId}: requested='${requestedModel}', diagnostics='${verification.selectedModel ?? "<none>"}', diagnosticsAvailable=${verification.diagnosticsAvailable}, matched=${verification.matched}`
+        );
+
+        if (verification.matched) {
+            config.logger.appendLine(
+                `[MCP Bridge] Internal model selection applied via command: ${commandId}`
+            );
+            return {
+                applied: true,
+                verified: true,
+                requestedModel,
+                selectedModel: requestedModel,
+                diagnosticsModel,
+                attempts: attemptLogs,
+            };
+        }
+    }
+
+    return {
+        applied,
+        verified: false,
+        requestedModel,
+        selectedModel: applied ? requestedModel : undefined,
+        diagnosticsModel,
+        attempts: attemptLogs,
+    };
+}
+
+interface ModelSelectionResult {
+    applied: boolean;
+    verified: boolean;
+    requestedModel: string;
+    selectedModel?: string;
+    diagnosticsModel?: string;
+    attempts: string[];
+}
+
+async function tryModelSelectionCommand(
+    commandId: string,
+    requestedModel: string,
+    attemptLogs: string[]
+): Promise<boolean> {
+    const argsToTry: unknown[][] = [
+        [requestedModel],
+        [{ model: requestedModel }],
+        [{ modelId: requestedModel }],
+        [{ action: "setModel", model: requestedModel }],
+        [{ action: "setModel", modelId: requestedModel }],
+    ];
+
+    for (const args of argsToTry) {
+        try {
+            await vscode.commands.executeCommand(commandId, ...args);
+            attemptLogs.push(`ok:${commandId}(${JSON.stringify(args)})`);
+            return true;
+        } catch (err: unknown) {
+            attemptLogs.push(
+                `ng:${commandId}(${JSON.stringify(args)}):${formatUnknownError(err)}`
+            );
+        }
+    }
+
+    return false;
+}
+
+async function verifyModelSelection(
+    requestedModel: string
+): Promise<{ matched: boolean; selectedModel?: string; diagnosticsAvailable: boolean }> {
+    const diagnostics = await safeGetIdeDiagnostics();
+    if (!diagnostics) {
+        return { matched: false, diagnosticsAvailable: false };
+    }
+
+    const selectedModel = extractSelectedModelName(diagnostics);
+    if (!selectedModel) {
+        return {
+            matched: false,
+            diagnosticsAvailable: true,
+        };
+    }
+
+    return {
+        matched: isEquivalentModelName(selectedModel, requestedModel),
+        selectedModel,
+        diagnosticsAvailable: true,
+    };
+}
+
+async function safeGetIdeDiagnostics(): Promise<unknown | undefined> {
+    try {
+        return await vscode.commands.executeCommand("antigravity.getDiagnostics");
+    } catch {
+        return undefined;
+    }
+}
+
+function extractSelectedModelName(diagnostics: unknown): string | undefined {
+    if (!isRecord(diagnostics)) {
+        return undefined;
+    }
+
+    const userSettings = diagnostics.userSettings;
+    if (!isRecord(userSettings)) {
+        return undefined;
+    }
+
+    const selectedName = userSettings.lastSelectedModelName;
+    if (typeof selectedName === "string" && selectedName.trim().length > 0) {
+        return selectedName.trim();
+    }
+
+    return undefined;
+}
+
+function isEquivalentModelName(actual: string, expected: string): boolean {
+    const normalize = (value: string): string =>
+        value.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const actualNormalized = normalize(actual);
+    const expectedNormalized = normalize(expected);
+    return (
+        actualNormalized === expectedNormalized ||
+        actualNormalized.includes(expectedNormalized) ||
+        expectedNormalized.includes(actualNormalized)
+    );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
 }
 
 async function handleGetLogs(
@@ -259,6 +493,10 @@ async function handleGetLogs(
     const lines = params?.lines ?? 100;
     const logs = config.logger.getLogs(lines);
     return { logs };
+}
+
+async function handleAgentListModels(): Promise<{ models: string[] }> {
+    return { models: [...AG_MODELS] };
 }
 
 // ============================================================

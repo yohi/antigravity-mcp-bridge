@@ -43,8 +43,10 @@ export const BRIDGE_METHODS = {
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
     AGENT_DISPATCH: "agent/dispatch",
+    AGENT_LIST_MODELS: "agent/models/list",
     WORKSPACE_EVENT: "workspace/event",
     GET_LOGS: "bridge/logs",
+    IDE_DIAGNOSTICS: "ide/diagnostics",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
@@ -106,11 +108,28 @@ export interface FsWriteResult {
 
 export interface AgentDispatchParams {
     prompt: string;
+    model?: string;
 }
 
 export interface AgentDispatchResult {
     success: boolean;
     message?: string;
+}
+
+export const AG_MODELS = [
+    "gemini-3.1-pro-high",
+    "gemini-3.1-pro",
+    "gemini-3.1-flash",
+    "gemini-3-pro",
+    "gemini-3-flash",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+] as const;
+
+export type AgModel = (typeof AG_MODELS)[number];
+
+export interface AgentListModelsResult {
+    models: AgModel[];
 }
 
 export interface WorkspaceEventParams {
