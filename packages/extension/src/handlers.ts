@@ -267,18 +267,26 @@ async function handleAgentDispatch(
         }
 
         const finalPromptText = promptText;
-        const payload: any = {
-            message: finalPromptText
-        };
-
         if (params.model) {
-            payload.modelId = mapToInternalModelId(params.model);
+            config.logger.appendLine(`[MCP Bridge] Model enforcement was attempted but actual command injection is disabled.`);
         }
+
+        try {
+            await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+        } catch (e) { }
 
         await vscode.commands.executeCommand(
             "antigravity.sendTextToChat",
-            payload
+            finalPromptText
         );
+
+        try {
+            await vscode.commands.executeCommand("antigravity.executeCascadeAction");
+        } catch (e) { }
+
+        try {
+            await vscode.commands.executeCommand("workbench.action.chat.submit");
+        } catch (e) { }
     } catch (err: unknown) {
         config.logger.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`

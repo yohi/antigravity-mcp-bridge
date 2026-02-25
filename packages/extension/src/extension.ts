@@ -231,6 +231,118 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             wsServer?.stop();
         },
     });
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("antigravityMcpBridge.postPrompt", async () => {
+            const prompt = await vscode.window.showInputBox({
+                prompt: "MCP Bridge: エージェントに送信するプロンプトを入力してください",
+                placeHolder: "例: こんにちは！"
+            });
+
+            if (!prompt) return;
+
+            const models = [
+                "自動選択 (デフォルト)",
+                "gemini-3-flash",
+                "gemini-3-pro",
+                "gemini-3.1-pro-high",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash"
+            ];
+
+            const selectedModel = await vscode.window.showQuickPick(models, {
+                placeHolder: "使用するモデルを選択してください (Escでキャンセル)"
+            });
+
+            if (!selectedModel) return;
+
+            let internalModelId: string | undefined = undefined;
+            if (selectedModel !== "自動選択 (デフォルト)") {
+                switch (selectedModel) {
+                    case "gemini-3-flash":
+                        internalModelId = "INFINITYJET";
+                        break;
+                    case "gemini-3-pro":
+                    case "gemini-3.1-pro-high":
+                        internalModelId = "RIFTRUNNER_THINKING_HIGH";
+                        break;
+                    case "gemini-2.5-pro":
+                        internalModelId = "GOOGLE_GEMINI_2_5_PRO";
+                        break;
+                    case "gemini-2.5-flash":
+                        internalModelId = "GOOGLE_GEMINI_2_5_FLASH";
+                        break;
+                    default:
+                        internalModelId = selectedModel;
+                }
+            }
+
+            try {
+                // モデル設定を試みる（handlers.ts と同様の処理を簡易実装）
+                if (internalModelId) {
+                    const modelCommands = [
+                        "agCockpit.setModel",
+                        "antigravity.setModel",
+                        "antigravity.agentPanel.setModel"
+                    ];
+                    for (const cmd of modelCommands) {
+                        try {
+                            const available = await vscode.commands.getCommands(true);
+                            if (available.includes(cmd)) {
+                                await vscode.commands.executeCommand(cmd, internalModelId);
+                                break;
+                            }
+                        } catch (e) {
+                            // 無視して次へ
+                        }
+                    }
+                }
+
+                let success = false;
+                const errors: any[] = [];
+
+                const finalPrompt = prompt;
+
+                const attempts = [
+                    { cmd: "antigravity.sendTextToChat", args: [finalPrompt] },
+                    { cmd: "antigravity.sendPromptToAgentPanel", args: [finalPrompt] }
+                ];
+
+                // まずチャットを開く
+                try {
+                    await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+                } catch (e) { }
+
+                for (const attempt of attempts) {
+                    try {
+                        await vscode.commands.executeCommand(attempt.cmd, ...attempt.args);
+                        success = true;
+                        vscode.window.showInformationMessage(`プロンプト送信成功: ${attempt.cmd}`);
+
+                        // プロンプトが入力欄に入るだけで送信されない場合のために、実行コマンドを追加で叩いてみる
+                        try {
+                            await vscode.commands.executeCommand("antigravity.executeCascadeAction");
+                        } catch (e) { }
+
+                        try {
+                            await vscode.commands.executeCommand("workbench.action.chat.submit");
+                        } catch (e) { }
+
+                        break;
+                    } catch (err: any) {
+                        errors.push(`${attempt.cmd}: ${err?.message || String(err)}`);
+                    }
+                }
+
+                if (!success) {
+                    throw new Error(errors.join(" | "));
+                }
+
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${err?.message || String(err)}`);
+            }
+        })
+    );
 }
 
 export function deactivate(): void {
