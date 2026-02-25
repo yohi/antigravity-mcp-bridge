@@ -1,4 +1,4 @@
-# Antigravity IDE 内部仕様調査報告書
+ha# Antigravity IDE 内部仕様調査報告書
 
 本報告書は、Antigravity IDEの内部仕様に関するリバースエンジニアリング調査の結果をまとめたものです。
 ファイルの変更は一切行わずに調査を実施しました。
@@ -253,19 +253,40 @@ UI（Electron/React）と推論バックエンド（Language Server）は、**Co
 
 AIとの対話を司る `antigravity.sendTextToChat` コマンドおよびモデル指定に関する詳細仕様です。
 
-### チャット送信 (`antigravity.sendTextToChat`)
+### チャット送信 (`antigravity.sendTextToChat` に関する注意喚起と制限)
 
-このコマンドは、エディタや各種UIコンポーネントからAIチャットへメッセージを送信する際の基盤です。引数として以下のオブジェクト構造をサポートしています。
+**【重要仕様・訂正】**
+拡張機能の API (`vscode.commands.executeCommand`) 経由で呼び出せる `antigravity.sendTextToChat` および `antigravity.sendPromptToAgentPanel` は、**第一引数として「単一の文字列 (プロンプト本文)」のみを受け付ける仕様**となっています。
 
-- **引数構造 (Payload)**:
-  - `message`: 送信するプロンプト（文字列）。
-  - `modelId`: 使用するモデルの識別子（オプション）。明示的に指定することで、ユーザーのデフォルト設定を上書きして特定のモデルで推論させることが可能です。
-  - `attachedContext`: プロンプトに付随させる追加のコンテキストデータ。
-  - `locationData`: メッセージ送信時のカーソル位置やファイル情報。
+以前の調査では `{ message, modelId, attachedContext }` といったオブジェクト引数を受け付けると記述していましたが、これは IDE 内部の React ステートや直接の RPC 送信（Protobuf）で利用されるデータ構造を誤認したものでした。実際には以下の制約と証跡が確認されています。
+
+#### 証跡 (Evidence)
+IDE 基盤コード (`/usr/share/antigravity/resources/app/out/vs/workbench/workbench.desktop.main.js`) にて、コマンドから接続されている内部処理関数 `sendMessageToChatPanel` の実装は以下のようになっています：
+
+```javascript
+sendMessageToChatPanel(e) {
+    // 渡された変数 e の内容やプロパティをパージせず、そのまま単なる「文字列 (value)」としてProtobufのチャンクに詰め込んでいる
+    const t = [new Hq({ chunk: { case: "text", value: e } })];
+    this.openPanel();
+    this.b.fire({
+        actionType: "sendMessage",
+        payload: t.map(i => i.toBinary())
+    });
+}
+```
+
+この実装により、外部拡張機能から `executeCommand` で `{ message: "...", modelId: "..." }` のようなオブジェクト形式のペイロードを渡すと、JavaScriptの暗黙的な文字列キャスト (`.toString()`) が発生し、チャットパネルにプロンプトではなく `[object Object]` と表示されてしまう不具合が生じます。また、`modelId` も抽出されず無視されます。
+
+#### モデル指定機能の現状と限界
+IDE のネイティブ機能として、ユーザーが UI ドロップダウンからモデル（例: `INFINITYJET`）を選択した場合、以下のように動作します。
+1. UI の React ステートツリー上に一時的に `modelId` が保持される。
+2. 送信時に、`sendMessageToChatPanel` とは別の非公開ネットワーク送信メソッドを経由し、UI ステートからかき集めた `{ attachedContext, modelId, ... }` のペイロードを直接 gRPC バックエンド (Language Server) へ送信する。
+
+そのため、現在の Antigravity IDE においては、**「VS Code API の外部コマンド（`executeCommand`）経由で、プロンプトテキストとモデル ID を同時にプログラムから指定して投げ込む設計（ルート）は意図的に用意されていない（あるいは未実装）」**という結論になります。外部からプロンプトを送信する際にモデルを切り替えるには、事前にユーザーが IDE のパネル上で手動でモデルを選択しておく必要があります。
 
 ### 指定可能な内部モデルID
 
-バックエンド（Language Server）およびUI層で定義されている主要なモデル識別子です。
+バックエンド（Language Server）およびUI層で定義されている主要なモデル識別子です。（コマンド外部からは直接注入できませんが、内部的には以下の識別子で記録・通信されています）
 
 - **Google Gemini シリーズ**:
   - `GOOGLE_GEMINI_2_5_PRO`: 標準的な高性能モデル。
@@ -274,10 +295,6 @@ AIとの対話を司る `antigravity.sendTextToChat` コマンドおよびモデ
 - **特殊・実験用モデル**:
   - `GOOGLE_GEMINI_COMPUTER_USE_EXPERIMENTAL`: ブラウザ操作やOSレベルの操作に特化したプロトタイプ。
   - `GOOGLE_GEMINI_INTERNAL_BYOM`: カスタムエンドポイント（Bring Your Own Model）向けの内部プロキシ。
-
-### モデル選択の永続化
-
-ユーザーがUI（モデル選択ドロップダウン等）からモデルを変更すると、`Memory` および `Brain` 内のセッション状態に `modelId` が記録され、以降の `executeCascadeAction` 時にはその ID が優先的に参照される仕組みになっています。
 
 ---
 
