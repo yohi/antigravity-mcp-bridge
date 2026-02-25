@@ -248,7 +248,8 @@ async function handleAgentDispatch(
 
     try {
         if (params.model) {
-            const selectionResult = await enforceInternalModelSelection(params.model, config);
+            const internalModelId = mapToInternalModelId(params.model);
+            const selectionResult = await enforceInternalModelSelection(internalModelId, config);
             selectedModel = selectionResult.selectedModel;
             const attemptsSummary = selectionResult.attempts.length > 0
                 ? selectionResult.attempts.join(" | ")
@@ -256,27 +257,27 @@ async function handleAgentDispatch(
 
             if (!selectionResult.applied) {
                 config.logger.appendLine(
-                    `[MCP Bridge] No internal model command applied for '${params.model}'. attempts=${attemptsSummary}`
+                    `[MCP Bridge] No internal model command applied for '${internalModelId}'. attempts=${attemptsSummary}`
                 );
             } else if (!selectionResult.verified) {
                 config.logger.appendLine(
-                    `[MCP Bridge] Internal model command applied but verification is not conclusive for '${params.model}'. diagnostics='${selectionResult.diagnosticsModel ?? "<none>"}' attempts=${attemptsSummary}`
+                    `[MCP Bridge] Internal model command applied but verification is not conclusive for '${internalModelId}'. diagnostics='${selectionResult.diagnosticsModel ?? "<none>"}' attempts=${attemptsSummary}`
                 );
             }
         }
 
-        const commandArgs: [string, ...unknown[]] = [promptText];
+        const finalPromptText = promptText;
+        const payload: any = {
+            message: finalPromptText
+        };
+
         if (params.model) {
-            commandArgs.push({
-                action: "sendMessage",
-                modelId: params.model,
-                model: params.model,
-            });
+            payload.modelId = mapToInternalModelId(params.model);
         }
 
         await vscode.commands.executeCommand(
-            "antigravity.sendPromptToAgentPanel",
-            ...commandArgs
+            "antigravity.sendTextToChat",
+            payload
         );
     } catch (err: unknown) {
         config.logger.appendLine(
@@ -468,6 +469,25 @@ function extractSelectedModelName(diagnostics: unknown): string | undefined {
     }
 
     return undefined;
+}
+
+function mapToInternalModelId(model: string): string {
+    switch (model.toLowerCase()) {
+        case "gemini-3.1-pro-high":
+        case "gemini-3-pro":
+            return "RIFTRUNNER_THINKING_HIGH";
+        case "gemini-3.1-pro":
+            return "RIFTRUNNER_THINKING_LOW";
+        case "gemini-3.1-flash":
+        case "gemini-3-flash":
+            return "INFINITYJET";
+        case "gemini-2.5-pro":
+            return "GOOGLE_GEMINI_2_5_PRO";
+        case "gemini-2.5-flash":
+            return "GOOGLE_GEMINI_2_5_FLASH";
+        default:
+            return model;
+    }
 }
 
 function isEquivalentModelName(actual: string, expected: string): boolean {
