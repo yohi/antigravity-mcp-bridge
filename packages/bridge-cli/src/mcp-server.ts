@@ -139,7 +139,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
         {
             prompt: z.string().describe("エージェントに送信するプロンプト"),
             model: z
-                .union(AG_MODELS.map(m => z.literal(m)) as any)
+                .enum(AG_MODELS)
                 .optional()
                 .describe("使用するAIモデルの指定（省略時はIDEのデフォルト）。指定時は送信前に内部モデル選択の適用を試行。"),
         },

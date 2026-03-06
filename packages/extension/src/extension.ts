@@ -65,8 +65,9 @@ function buildModelPreferencesProto(modelId: string): string {
 /** DBからモデル設定を読み書きする（sqlite3 CLIを使用） */
 export function readModelFromDb(): string | undefined {
     try {
-        const result = execSync(
-            `sqlite3 "${ANTIGRAVITY_DB_PATH}" "SELECT value FROM ItemTable WHERE key='${MODEL_PREF_KEY}'"`
+        const result = execFileSync(
+            "sqlite3",
+            [ANTIGRAVITY_DB_PATH, `SELECT value FROM ItemTable WHERE key='${MODEL_PREF_KEY}'`]
         ).toString().trim();
         if (!result) return undefined;
         // Base64 → バイナリ → モデルID文字列を抽出
@@ -383,6 +384,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const PROMPT_SEND_MS = 500;
             const MODEL_RESTORE_WAIT_MS = 4000;
 
+            let sendSucceeded = false;
             try {
                 if (internalModelId) {
                     if (!sqliteAvailable) {
@@ -407,7 +409,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 try {
                     await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
                     await sleep(CHAT_PANEL_OPEN_MS);
-                } catch (e) { }
+                } catch (e) {
+                    logger.appendLine(`[MCP Bridge] Failed to open prioritized chat panel: ${e}`);
+                }
 
                 // 2. sendPromptToAgentPanel が実際の送信コマンド
                 // ※ sendTextToChat は入力欄にセットするだけで送信しない
@@ -419,13 +423,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 // sendPromptToAgentPanel は内部で sendMessageToChatPanel を呼び直接送信するので
                 // executeCascadeAction は不要
 
-                vscode.window.showInformationMessage(`プロンプト送信完了${internalModelId ? ` (モデル: ${internalModelId})` : ""}`);
-
                 // リクエストが飛ぶまで待機してからモデルを元に戻す
                 if (internalModelId) {
                     await sleep(MODEL_RESTORE_WAIT_MS);
                 }
 
+                sendSucceeded = true;
             } catch (err: unknown) {
                 let msg = String(err);
                 if (err instanceof Error) {
@@ -435,14 +438,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 }
                 vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${msg}`);
             } finally {
+                let restoreSucceeded = true;
                 // === Restore Original Model ===
                 if (internalModelId && originalModelId) {
                     try {
                         writeModelToDb(originalModelId);
                         logger.appendLine(`[MCP Hack] DB restored: ${internalModelId} → ${originalModelId}`);
                     } catch (e) {
+                        restoreSucceeded = false;
                         logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
+                        if (sendSucceeded) {
+                            vscode.window.showErrorMessage(`モデルの復元に失敗しました: ${e}`);
+                        }
                     }
+                }
+
+                if (sendSucceeded && restoreSucceeded) {
+                    vscode.window.showInformationMessage(`プロンプト送信完了${internalModelId ? ` (モデル: ${internalModelId})` : ""}`);
                 }
             }
         })

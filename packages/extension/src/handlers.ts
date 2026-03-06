@@ -271,6 +271,7 @@ async function executeAgentDispatch(
     let originalModelId: string | undefined;
     const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+    let sendSucceeded = false;
     try {
         if (params.model) {
             // Validate model
@@ -320,6 +321,7 @@ async function executeAgentDispatch(
             await sleep(4000);
         }
 
+        sendSucceeded = true;
     } catch (err: unknown) {
         if (err instanceof BridgeError) {
             throw err;
@@ -339,6 +341,12 @@ async function executeAgentDispatch(
                 config.logger.appendLine(`[MCP Hack] DB restored: ${selectedModel} → ${originalModelId}`);
             } catch (e: unknown) {
                 config.logger.appendLine(`[MCP Hack] DB restore failed: ${formatUnknownError(e)}`);
+                if (sendSucceeded) {
+                    throw createBridgeError(
+                        ERROR_CODES.AGENT_DISPATCH_FAILED,
+                        `Failed to restore DB model: ${formatUnknownError(e)}`
+                    );
+                }
             }
         }
     }
