@@ -4,7 +4,13 @@ import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 
 async function main(): Promise<void> {
     const host = process.env.ANTIGRAVITY_HOST ?? "127.0.0.1";
-    const port = parseInt(process.env.ANTIGRAVITY_PORT ?? "8888", 10);
+    const portEnv = process.env.ANTIGRAVITY_PORT ?? "8888";
+    let port = parseInt(portEnv, 10);
+
+    if (isNaN(port) || port < 1 || port > 65535) {
+        console.warn(`[Test] Invalid port specified in ANTIGRAVITY_PORT: "${portEnv}". Falling back to 8888.`);
+        port = 8888;
+    }
     const token = process.env.ANTIGRAVITY_TOKEN;
 
     if (!token) {
@@ -44,9 +50,10 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(response, null, 2));
     } catch (err: unknown) {
         console.error(`[Test] Request failed: ${formatUnknownError(err)}`);
+        process.exit(1);
+    } finally {
+        wsClient.close();
     }
-
-    wsClient.close();
     process.exit(0);
 }
 

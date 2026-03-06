@@ -4,7 +4,7 @@
 
 本仕様書は、Antigravity MCP Bridge (v1.2) の既存機能である dispatch_agent_task ツールを拡張し、タスク委譲時に「使用するLLMモデルを指定できる機能」を追加するための要件定義・設計書である。
 
-Antigravity IDEの内部APIがモデル指定パラメータをサポートしていない可能性を考慮し、**「プロンプト自体にモデル指定のシステムプロンプトを自動注入する（フォールバック）」**というハイブリッドなアプローチを採用し、確実なモデル制御を実現する。
+Antigravity IDEの内部APIがモデル指定パラメータをサポートしていないため、**「SQLite DBに直接アクセスしてモデル設定をパッチし、送信後に復元する」**というアプローチを採用し、確実なモデル制御を実現する。
 
 ## 2. Tech Stack (変更なし)
 
@@ -38,13 +38,7 @@ sequenceDiagram
 * **優先度**: Must Have  
 * **内容**: dispatch_agent_task の引数として model (Optional: String) を受け付ける。  
 * **バリデーション**: zod の列挙型 (enum) などを利用し、許可されたモデル名のみを受け付ける。  
-  * **許可リスト（例）**:  
-    * gemini-3-pro (推奨 / 強力な推論)  
-    * gemini-2.5-pro  
-    * gemini-2.5-flash (高速)  
-    * gemini-2.0-pro-exp  
-    * gemini-2.0-flash  
-    * gemini-exp-1206  
+  * **許可リスト**: `packages/shared/src/types.ts` の `AG_MODELS` に定義されているモデルを動的に参照する。
   * 不正なモデル名が指定された場合は MCP サーバー側でバリデーションエラーを返す。
 
 ### FR-02: Model Parameter Passing (Shared Layer)
@@ -57,13 +51,10 @@ sequenceDiagram
 * **優先度**: Must Have  
 * **内容**: Extension側で model パラメータを受け取った際、Antigravity IDEのコマンドに渡すペイロードを構築する。  
 * **処理ロジック**:  
-  1. APIペイロードに modelId または model として値を直接含める（APIが将来対応したときのため）。  
-  2. **【最重要】** model が指定されている場合、元の prompt の先頭に以下のプレフィックスを自動で追加する。  
-     [System Directive: You MUST use the '${model}' model for this task. Do not use any other model.]
-
-     ${original_prompt}
-
-  3. この改変されたテキストを action: "sendMessage" の text として送信する。
+    1. `readModelFromDb()` を呼び出し、現在のモデルIDをバックアップする。
+    2. `writeModelToDb(requestedModel)` を呼び出し、SQLite DBに目的のモデルIDを書き込む。
+    3. `antigravity.sendPromptToAgentPanel` を呼び出してプロンプトを送信する。
+    4. 送信完了後、バックアップしておいたモデルIDを用いて `writeModelToDb()` を呼び出し、元の状態に復元する。
 
 ## 5. Data Structure
 

@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import { execSync } from "child_process";
 import { BridgeWebSocketServer } from "./server";
-import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, mapToInternalModelId } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
 
 // === SQLite DB Direct Model Patch ===
@@ -12,9 +12,20 @@ import { RingBufferLogger } from "./logger";
 // Protobuf形式でモデル選択状態を保存している。
 // sendTextToChatを呼ぶ直前にDBを書き換え、直後に元に戻すことでモデルを指定する。
 
-const ANTIGRAVITY_DB_PATH = path.join(
-    os.homedir(), '.config', 'Antigravity', 'User', 'globalStorage', 'state.vscdb'
-);
+const getDbPath = () => {
+    const home = os.homedir();
+    const subPath = path.join('Antigravity', 'User', 'globalStorage', 'state.vscdb');
+    switch (process.platform) {
+        case 'win32':
+            return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), subPath);
+        case 'darwin':
+            return path.join(home, 'Library', 'Application Support', subPath);
+        default:
+            return path.join(home, '.config', subPath);
+    }
+};
+
+const ANTIGRAVITY_DB_PATH = getDbPath();
 const MODEL_PREF_KEY = 'antigravityUnifiedStateSync.modelPreferences';
 
 /**
@@ -76,11 +87,20 @@ export function setCurrentTargetModel(_modelId: string | undefined) {
 // ===============================================
 
 let wsServer: BridgeWebSocketServer | undefined;
+let sqliteAvailable = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = vscode.window.createOutputChannel(
         "Antigravity MCP Bridge"
     );
+
+    // Check sqlite3 availability
+    try {
+        execSync('sqlite3 --version');
+        sqliteAvailable = true;
+    } catch (e) {
+        outputChannel.appendLine(`[MCP Bridge] WARNING: sqlite3 CLI not found. Model selection via DB patch will be disabled.`);
+    }
     const logger = new RingBufferLogger(outputChannel);
     context.subscriptions.push(outputChannel);
 
@@ -328,24 +348,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (!selectedModel) return;
 
             let internalModelId: string | undefined = undefined;
-            if (selectedModel !== "自動選択 (デフォルト)") {
-                switch (selectedModel) {
-                    case "gemini-3-flash":
-                        internalModelId = "INFINITYJET";
-                        break;
-                    case "gemini-3-pro":
-                    case "gemini-3.1-pro-high":
-                        internalModelId = "RIFTRUNNER_THINKING_HIGH";
-                        break;
-                    case "gemini-2.5-pro":
-                        internalModelId = "GOOGLE_GEMINI_2_5_PRO";
-                        break;
-                    case "gemini-2.5-flash":
-                        internalModelId = "GOOGLE_GEMINI_2_5_FLASH";
-                        break;
-                    default:
-                        internalModelId = selectedModel;
-                }
+            if (selectedModel && selectedModel !== "自動選択 (デフォルト)") {
+                internalModelId = mapToInternalModelId(selectedModel);
             }
 
             // === SQLite DB Direct Model Patch ===
@@ -354,9 +358,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
             try {
                 if (internalModelId) {
+                    if (!sqliteAvailable) {
+                        logger.appendLine(`[MCP Hack] Aborting DB patch: sqlite3 not available.`);
+                        throw new Error("sqlite3 CLI is required for model selection.");
+                    }
                     originalModelId = readModelFromDb();
+                    if (!originalModelId) {
+                        logger.appendLine(`[MCP Hack] Aborting DB patch: failed to read current model from DB.`);
+                        throw new Error("Failed to backup current model from DB.");
+                    }
                     writeModelToDb(internalModelId);
-                    logger.appendLine(`[MCP Hack] DB patched: ${originalModelId ?? "?"} → ${internalModelId}`);
+                    logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
                     // DBがファイルシステム上で反映され、IDEがリロードする時間を待つ
                     await sleep(1000);
                 }

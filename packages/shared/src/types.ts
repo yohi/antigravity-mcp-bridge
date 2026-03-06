@@ -51,6 +51,16 @@ export const BRIDGE_METHODS = {
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
 
+export interface AgentListModelsParams { }
+export interface AgentListModelsResult {
+    models: AgModel[];
+}
+
+export interface IdeDiagnosticsParams { }
+export interface IdeDiagnosticsResult {
+    [key: string]: unknown;
+}
+
 // ============================================================
 // Error Codes
 // ============================================================
@@ -108,7 +118,7 @@ export interface FsWriteResult {
 
 export interface AgentDispatchParams {
     prompt: string;
-    model?: string;
+    model?: AgModel;
 }
 
 export interface AgentDispatchResult {
@@ -127,6 +137,28 @@ export const AG_MODELS = [
 ] as const;
 
 export type AgModel = (typeof AG_MODELS)[number];
+
+/**
+ * AgModel 名から Antigravity 内部のモデル ID へマッピングする
+ */
+export function mapToInternalModelId(model: string): string {
+    switch (model.toLowerCase()) {
+        case "gemini-3.1-pro-high":
+        case "gemini-3-pro":
+            return "RIFTRUNNER_THINKING_HIGH";
+        case "gemini-3.1-pro":
+            return "RIFTRUNNER_THINKING_LOW";
+        case "gemini-3.1-flash":
+        case "gemini-3-flash":
+            return "INFINITYJET";
+        case "gemini-2.5-pro":
+            return "GOOGLE_GEMINI_2_5_PRO";
+        case "gemini-2.5-flash":
+            return "GOOGLE_GEMINI_2_5_FLASH";
+        default:
+            return model;
+    }
+}
 
 export interface AgentListModelsResult {
     models: AgModel[];

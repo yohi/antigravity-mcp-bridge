@@ -11,4 +11,12 @@ if [ -z "$ANTIGRAVITY_TOKEN" ]; then
     exit 1
 fi
 
-node packages/bridge-cli/dist/test-dispatch.js "$1" "$2"
+# Check if the build artifact exists
+DIST_FILE="packages/bridge-cli/dist/test-dispatch.js"
+if [ ! -f "$DIST_FILE" ]; then
+    echo "Error: Build artifact not found at $DIST_FILE"
+    echo "Please run 'npm run build' first."
+    exit 1
+fi
+
+node "$DIST_FILE" "$1" "$2"

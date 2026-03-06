@@ -61,5 +61,5 @@ async function handleAgentDispatch(
 4. `dispatch_agent_task` を実行し、チャットに正しい内容が表示されることを確認。
 
 ## 4. 関連ファイル
-- `/home/y_ohi/program/private/antigravity-mcp-bridge/packages/extension/src/handlers.ts`
-- `/home/y_ohi/program/private/antigravity-mcp-bridge/packages/shared/src/types.ts`
+- packages/extension/src/handlers.ts
+- packages/shared/src/types.ts

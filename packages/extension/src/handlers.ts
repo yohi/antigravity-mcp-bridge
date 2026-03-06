@@ -15,9 +15,8 @@ import type {
     BridgeGetLogsParams,
     BridgeGetLogsResult,
 } from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS, mapToInternalModelId, AgModel, formatUnknownError } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
-import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
 import { setCurrentTargetModel, readModelFromDb, writeModelToDb } from "./extension";
 
 /**
@@ -236,7 +235,30 @@ async function handleFsWrite(
     };
 }
 
+// Mutex lock for agent dispatch to prevent race conditions during DB patching
+let dispatchLock: Promise<void> = Promise.resolve();
+
 async function handleAgentDispatch(
+    params: AgentDispatchParams,
+    config: ServerConfig
+): Promise<AgentDispatchResult> {
+    return new Promise((resolve, reject) => {
+        dispatchLock = dispatchLock.then(async () => {
+            try {
+                const result = await executeAgentDispatch(params, config);
+                resolve(result);
+            } catch (err) {
+                reject(err);
+            }
+        }).catch((err) => {
+            // This should not happen if executeAgentDispatch handles errors properly
+            config.logger.appendLine(`[MCP Bridge] Critical lock error: ${formatUnknownError(err)}`);
+            reject(err);
+        });
+    });
+}
+
+async function executeAgentDispatch(
     params: AgentDispatchParams,
     config: ServerConfig
 ): Promise<AgentDispatchResult> {
@@ -251,12 +273,24 @@ async function handleAgentDispatch(
 
     try {
         if (params.model) {
+            // Validate model
+            if (!AG_MODELS.includes(params.model as AgModel)) {
+                config.logger.appendLine(`[MCP Bridge] Invalid model requested: ${params.model}. Skipping patch.`);
+                throw createBridgeError(ERROR_CODES.INVALID_PARAMS, `Invalid model requested: ${params.model}`);
+            }
+
             const internalModelId = mapToInternalModelId(params.model);
+
             // === SQLite DB Direct Model Patch ===
             originalModelId = readModelFromDb();
+            if (!originalModelId) {
+                config.logger.appendLine(`[MCP Bridge] Failed to read current model from DB. Aborting patch.`);
+                throw createBridgeError(ERROR_CODES.AGENT_DISPATCH_FAILED, "Failed to backup model before patch.");
+            }
+
             writeModelToDb(internalModelId);
             selectedModel = internalModelId;
-            config.logger.appendLine(`[MCP Hack] DB patched: ${originalModelId ?? "?"} → ${internalModelId}`);
+            config.logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
             // DB反映待ち
             await sleep(1000);
         }
@@ -320,200 +354,6 @@ async function handleAgentDispatch(
         success: true,
         message: `Agent task dispatched${modelSuffix}: "${preview}"`,
     };
-}
-
-async function enforceInternalModelSelection(
-    requestedModel: string,
-    config: ServerConfig
-): Promise<ModelSelectionResult> {
-    config.logger.appendLine(
-        `[MCP Bridge] Enforcing internal model selection: ${requestedModel}`
-    );
-
-    const availableCommands = await vscode.commands.getCommands(true);
-    const preferredCommands = [
-        "antigravity.setModel",
-        "antigravity.selectModel",
-        "antigravity.changeModel",
-        "antigravity.agentPanel.setModel",
-        "antigravity.agentPanel.selectModel",
-        "agCockpit.setModel",
-        "agCockpit.selectModel",
-        "agCockpit.refreshModelCache",
-    ];
-    const discoveredModelCommands = availableCommands.filter((commandId) =>
-        /(antigravity|agCockpit)/i.test(commandId) && /model/i.test(commandId)
-    );
-
-    const commandIdsToTry = Array.from(
-        new Set([
-            ...preferredCommands.filter((commandId) => availableCommands.includes(commandId)),
-            ...discoveredModelCommands,
-        ])
-    );
-
-    const attemptLogs: string[] = [];
-    let diagnosticsModel: string | undefined;
-    let applied = false;
-
-    for (const commandId of commandIdsToTry) {
-        const commandSucceeded = await tryModelSelectionCommand(
-            commandId,
-            requestedModel,
-            attemptLogs
-        );
-
-        if (!commandSucceeded) {
-            continue;
-        }
-
-        applied = true;
-        const verification = await verifyModelSelection(requestedModel);
-        diagnosticsModel = verification.selectedModel ?? diagnosticsModel;
-        config.logger.appendLine(
-            `[MCP Bridge] Model verification after ${commandId}: requested='${requestedModel}', diagnostics='${verification.selectedModel ?? "<none>"}', diagnosticsAvailable=${verification.diagnosticsAvailable}, matched=${verification.matched}`
-        );
-
-        if (verification.matched) {
-            config.logger.appendLine(
-                `[MCP Bridge] Internal model selection applied via command: ${commandId}`
-            );
-            return {
-                applied: true,
-                verified: true,
-                requestedModel,
-                selectedModel: requestedModel,
-                diagnosticsModel,
-                attempts: attemptLogs,
-            };
-        }
-    }
-
-    return {
-        applied,
-        verified: false,
-        requestedModel,
-        selectedModel: applied ? requestedModel : undefined,
-        diagnosticsModel,
-        attempts: attemptLogs,
-    };
-}
-
-interface ModelSelectionResult {
-    applied: boolean;
-    verified: boolean;
-    requestedModel: string;
-    selectedModel?: string;
-    diagnosticsModel?: string;
-    attempts: string[];
-}
-
-async function tryModelSelectionCommand(
-    commandId: string,
-    requestedModel: string,
-    attemptLogs: string[]
-): Promise<boolean> {
-    const argsToTry: unknown[][] = [
-        [requestedModel],
-        [{ model: requestedModel }],
-        [{ modelId: requestedModel }],
-        [{ action: "setModel", model: requestedModel }],
-        [{ action: "setModel", modelId: requestedModel }],
-    ];
-
-    for (const args of argsToTry) {
-        try {
-            await vscode.commands.executeCommand(commandId, ...args);
-            attemptLogs.push(`ok:${commandId}(${JSON.stringify(args)})`);
-            return true;
-        } catch (err: unknown) {
-            attemptLogs.push(
-                `ng:${commandId}(${JSON.stringify(args)}):${formatUnknownError(err)}`
-            );
-        }
-    }
-
-    return false;
-}
-
-async function verifyModelSelection(
-    requestedModel: string
-): Promise<{ matched: boolean; selectedModel?: string; diagnosticsAvailable: boolean }> {
-    const diagnostics = await safeGetIdeDiagnostics();
-    if (!diagnostics) {
-        return { matched: false, diagnosticsAvailable: false };
-    }
-
-    const selectedModel = extractSelectedModelName(diagnostics);
-    if (!selectedModel) {
-        return {
-            matched: false,
-            diagnosticsAvailable: true,
-        };
-    }
-
-    return {
-        matched: isEquivalentModelName(selectedModel, requestedModel),
-        selectedModel,
-        diagnosticsAvailable: true,
-    };
-}
-
-async function safeGetIdeDiagnostics(): Promise<unknown | undefined> {
-    try {
-        return await vscode.commands.executeCommand("antigravity.getDiagnostics");
-    } catch {
-        return undefined;
-    }
-}
-
-function extractSelectedModelName(diagnostics: unknown): string | undefined {
-    if (!isRecord(diagnostics)) {
-        return undefined;
-    }
-
-    const userSettings = diagnostics.userSettings;
-    if (!isRecord(userSettings)) {
-        return undefined;
-    }
-
-    const selectedName = userSettings.lastSelectedModelName;
-    if (typeof selectedName === "string" && selectedName.trim().length > 0) {
-        return selectedName.trim();
-    }
-
-    return undefined;
-}
-
-function mapToInternalModelId(model: string): string {
-    switch (model.toLowerCase()) {
-        case "gemini-3.1-pro-high":
-        case "gemini-3-pro":
-            return "RIFTRUNNER_THINKING_HIGH";
-        case "gemini-3.1-pro":
-            return "RIFTRUNNER_THINKING_LOW";
-        case "gemini-3.1-flash":
-        case "gemini-3-flash":
-            return "INFINITYJET";
-        case "gemini-2.5-pro":
-            return "GOOGLE_GEMINI_2_5_PRO";
-        case "gemini-2.5-flash":
-            return "GOOGLE_GEMINI_2_5_FLASH";
-        default:
-            return model;
-    }
-}
-
-function isEquivalentModelName(actual: string, expected: string): boolean {
-    const normalize = (value: string): string =>
-        value.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const actualNormalized = normalize(actual);
-    const expectedNormalized = normalize(expected);
-    return (
-        actualNormalized === expectedNormalized ||
-        actualNormalized.includes(expectedNormalized) ||
-        expectedNormalized.includes(actualNormalized)
-    );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
