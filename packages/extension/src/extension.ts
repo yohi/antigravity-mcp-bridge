@@ -1,9 +1,80 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
 import * as path from "path";
+import * as os from "os";
+import { execSync } from "child_process";
 import { BridgeWebSocketServer } from "./server";
 import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
+
+// === SQLite DB Direct Model Patch ===
+// AntigravityはSQLite DB (~/.config/Antigravity/User/globalStorage/state.vscdb) に
+// Protobuf形式でモデル選択状態を保存している。
+// sendTextToChatを呼ぶ直前にDBを書き換え、直後に元に戻すことでモデルを指定する。
+
+const ANTIGRAVITY_DB_PATH = path.join(
+    os.homedir(), '.config', 'Antigravity', 'User', 'globalStorage', 'state.vscdb'
+);
+const MODEL_PREF_KEY = 'antigravityUnifiedStateSync.modelPreferences';
+
+/**
+ * Protobufバイナリを組み立てて Base64 エンコードした値を返す
+ * 構造: OuterMsg { field1: KVMsg { field1(str): key, field2: ValMsg { field1(str): modelId } } }
+ */
+function buildModelPreferencesProto(modelId: string): string {
+    const key = 'last_selected_agent_model_sentinel_key';
+    const keyBytes = Buffer.from(key, 'utf-8');
+    const modelBytes = Buffer.from(modelId, 'utf-8');
+
+    // innerValMsg: tag(field1,LEN)=0x0a + length + modelBytes
+    const innerVal = Buffer.concat([Buffer.from([0x0a, modelBytes.length]), modelBytes]);
+    // kvMsg: tag(field1,LEN)=0x0a + len + keyBytes + tag(field2,LEN)=0x12 + len + innerVal
+    const kv = Buffer.concat([
+        Buffer.from([0x0a, keyBytes.length]), keyBytes,
+        Buffer.from([0x12, innerVal.length]), innerVal,
+    ]);
+    // outerMsg: tag(field1,LEN)=0x0a + len + kv
+    const outer = Buffer.concat([Buffer.from([0x0a, kv.length]), kv]);
+    return outer.toString('base64');
+}
+
+/** DBからモデル設定を読み書きする（sqlite3 CLIを使用） */
+export function readModelFromDb(): string | undefined {
+    try {
+        const result = execSync(
+            `sqlite3 "${ANTIGRAVITY_DB_PATH}" "SELECT value FROM ItemTable WHERE key='${MODEL_PREF_KEY}'"`
+        ).toString().trim();
+        if (!result) return undefined;
+        // Base64 → バイナリ → モデルID文字列を抽出
+        const buf = Buffer.from(result, 'base64');
+        // モデルID部分: outer(0x0a,len) + kv(0x0a,38bytes key, 0x12,len) + innerVal(0x0a,len) + modelBytes
+        // innerVal offset = 2(outer hdr) + 2(kv field1 hdr) + 38(key) + 2(kv field2 hdr) = 44 bytes
+        // then innerVal = 0x0a + 1byte(len) + modelId
+        const kvStart = 2; // outer header skip
+        const keyLen = buf[kvStart + 1]; // kv field1 length
+        const innerValOffset = kvStart + 2 + keyLen + 2; // skip outer hdr + kv-field1-hdr + key + kv-field2-hdr
+        // innerVal: 0x0a(tag) + length byte + modelId bytes
+        const modelIdLen = buf[innerValOffset + 1];
+        const modelId = buf.slice(innerValOffset + 2, innerValOffset + 2 + modelIdLen).toString('utf-8');
+        return modelId;
+    } catch {
+        return undefined;
+    }
+}
+
+export function writeModelToDb(modelId: string): void {
+    const b64 = buildModelPreferencesProto(modelId);
+    execSync(
+        `sqlite3 "${ANTIGRAVITY_DB_PATH}" "UPDATE ItemTable SET value='${b64}' WHERE key='${MODEL_PREF_KEY}'"`
+    );
+}
+
+export function setCurrentTargetModel(_modelId: string | undefined) {
+    // 後方互換のためのstub - handlers.ts から呼ばれる
+}
+
+// ===============================================
+
 let wsServer: BridgeWebSocketServer | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -277,69 +348,57 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 }
             }
 
-            try {
-                // モデル設定を試みる（handlers.ts と同様の処理を簡易実装）
-                if (internalModelId) {
-                    const modelCommands = [
-                        "agCockpit.setModel",
-                        "antigravity.setModel",
-                        "antigravity.agentPanel.setModel"
-                    ];
-                    for (const cmd of modelCommands) {
-                        try {
-                            const available = await vscode.commands.getCommands(true);
-                            if (available.includes(cmd)) {
-                                await vscode.commands.executeCommand(cmd, internalModelId);
-                                break;
-                            }
-                        } catch (e) {
-                            // 無視して次へ
-                        }
-                    }
-                }
+            // === SQLite DB Direct Model Patch ===
+            let originalModelId: string | undefined;
+            const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-                let success = false;
-                const errors: any[] = [];
+            try {
+                if (internalModelId) {
+                    originalModelId = readModelFromDb();
+                    writeModelToDb(internalModelId);
+                    logger.appendLine(`[MCP Hack] DB patched: ${originalModelId ?? "?"} → ${internalModelId}`);
+                    // DBがファイルシステム上で反映され、IDEがリロードする時間を待つ
+                    await sleep(1000);
+                }
 
                 const finalPrompt = prompt;
 
-                const attempts = [
-                    { cmd: "antigravity.sendTextToChat", args: [finalPrompt] },
-                    { cmd: "antigravity.sendPromptToAgentPanel", args: [finalPrompt] }
-                ];
-
-                // まずチャットを開く
+                // 1. チャットパネルを開く
+                logger.appendLine(`[MCP Bridge] Opening chat view...`);
                 try {
                     await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+                    await sleep(800);
                 } catch (e) { }
 
-                for (const attempt of attempts) {
-                    try {
-                        await vscode.commands.executeCommand(attempt.cmd, ...attempt.args);
-                        success = true;
-                        vscode.window.showInformationMessage(`プロンプト送信成功: ${attempt.cmd}`);
+                // 2. sendPromptToAgentPanel が実際の送信コマンド
+                // ※ sendTextToChat は入力欄にセットするだけで送信しない
+                // ※ sendPromptToAgentPanel(文字列) が ChantPanel に直接送信する
+                logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
+                await vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", finalPrompt);
+                await sleep(500);
 
-                        // プロンプトが入力欄に入るだけで送信されない場合のために、実行コマンドを追加で叩いてみる
-                        try {
-                            await vscode.commands.executeCommand("antigravity.executeCascadeAction");
-                        } catch (e) { }
+                // sendPromptToAgentPanel は内部で sendMessageToChatPanel を呼び直接送信するので
+                // executeCascadeAction は不要
 
-                        try {
-                            await vscode.commands.executeCommand("workbench.action.chat.submit");
-                        } catch (e) { }
+                vscode.window.showInformationMessage(`プロンプト送信完了${internalModelId ? ` (モデル: ${internalModelId})` : ""}`);
 
-                        break;
-                    } catch (err: any) {
-                        errors.push(`${attempt.cmd}: ${err?.message || String(err)}`);
-                    }
-                }
-
-                if (!success) {
-                    throw new Error(errors.join(" | "));
+                // リクエストが飛ぶまで待機してからモデルを元に戻す
+                if (internalModelId) {
+                    await sleep(4000);
                 }
 
             } catch (err: any) {
                 vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${err?.message || String(err)}`);
+            } finally {
+                // === Restore Original Model ===
+                if (internalModelId && originalModelId) {
+                    try {
+                        writeModelToDb(originalModelId);
+                        logger.appendLine(`[MCP Hack] DB restored: ${internalModelId} → ${originalModelId}`);
+                    } catch (e) {
+                        logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
+                    }
+                }
             }
         })
     );

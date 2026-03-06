@@ -18,6 +18,7 @@ import type {
 import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
 import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
+import { setCurrentTargetModel, readModelFromDb, writeModelToDb } from "./extension";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -245,48 +246,43 @@ async function handleAgentDispatch(
 
     const promptText = params.prompt;
     let selectedModel: string | undefined;
+    let originalModelId: string | undefined;
+    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
     try {
         if (params.model) {
             const internalModelId = mapToInternalModelId(params.model);
-            const selectionResult = await enforceInternalModelSelection(internalModelId, config);
-            selectedModel = selectionResult.selectedModel;
-            const attemptsSummary = selectionResult.attempts.length > 0
-                ? selectionResult.attempts.join(" | ")
-                : "<none>";
-
-            if (!selectionResult.applied) {
-                config.logger.appendLine(
-                    `[MCP Bridge] No internal model command applied for '${internalModelId}'. attempts=${attemptsSummary}`
-                );
-            } else if (!selectionResult.verified) {
-                config.logger.appendLine(
-                    `[MCP Bridge] Internal model command applied but verification is not conclusive for '${internalModelId}'. diagnostics='${selectionResult.diagnosticsModel ?? "<none>"}' attempts=${attemptsSummary}`
-                );
-            }
+            // === SQLite DB Direct Model Patch ===
+            originalModelId = readModelFromDb();
+            writeModelToDb(internalModelId);
+            selectedModel = internalModelId;
+            config.logger.appendLine(`[MCP Hack] DB patched: ${originalModelId ?? "?"} → ${internalModelId}`);
+            // DB反映待ち
+            await sleep(1000);
         }
 
         const finalPromptText = promptText;
-        if (params.model) {
-            config.logger.appendLine(`[MCP Bridge] Model enforcement was attempted but actual command injection is disabled.`);
-        }
 
+        // 1. チャットパネルを開く
         try {
             await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+            await sleep(800);
         } catch (e) { }
 
+        // sendPromptToAgentPanel が実際の送信コマンド（内部で sendMessageToChatPanel を呼ぶ）
+        // sendTextToChat は入力欄にセットするだけで送信しない
+        config.logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
         await vscode.commands.executeCommand(
-            "antigravity.sendTextToChat",
+            "antigravity.sendPromptToAgentPanel",
             finalPromptText
         );
+        await sleep(500);
 
-        try {
-            await vscode.commands.executeCommand("antigravity.executeCascadeAction");
-        } catch (e) { }
+        if (selectedModel) {
+            // DBリストア前に送信完了まで待機
+            await sleep(4000);
+        }
 
-        try {
-            await vscode.commands.executeCommand("workbench.action.chat.submit");
-        } catch (e) { }
     } catch (err: unknown) {
         config.logger.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
@@ -295,6 +291,16 @@ async function handleAgentDispatch(
             ERROR_CODES.AGENT_DISPATCH_FAILED,
             `Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
+    } finally {
+        // === Restore Original Model ===
+        if (params.model && originalModelId) {
+            try {
+                writeModelToDb(originalModelId);
+                config.logger.appendLine(`[MCP Hack] DB restored: ${selectedModel} → ${originalModelId}`);
+            } catch (e) {
+                config.logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
+            }
+        }
     }
 
     const preview =

@@ -1,0 +1,8 @@
+.vscode/**
+.gemini/**
+src/**
+tsconfig.json
+**/*.ts
+!out/**
+node_modules/**
+*.vsix
