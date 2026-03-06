@@ -140,6 +140,10 @@ export type AgModel = (typeof AG_MODELS)[number];
 
 /**
  * AgModel 名から Antigravity 内部のモデル ID へマッピングする
+ * 
+ * 未知の ID が渡された場合のデフォルトの挙動として、入力モデル文字列をそのまま返す（バリデーションや例外のスローは行わない）。
+ * これは、この関数の呼び出し元（例: handlers.ts での AG_MODELS.includes(...) など）で事前に許可リストによる検証が行われることを前提としているためである。
+ * したがって、将来的に新しいモデルマッピングが必要になった場合は、この関数の更新とともに共通の AG_MODELS 定数も忘れずに更新すること。
  */
 export function mapToInternalModelId(model: string): string {
     switch (model.toLowerCase()) {

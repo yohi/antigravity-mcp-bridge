@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import { execSync, execFileSync } from "child_process";
 import { BridgeWebSocketServer } from "./server";
-import { BRIDGE_METHODS, mapToInternalModelId } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, mapToInternalModelId, AG_MODELS } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
 
 // === SQLite DB Direct Model Patch ===
@@ -75,10 +75,22 @@ export function readModelFromDb(): string | undefined {
         // innerVal offset = 2(outer hdr) + 2(kv field1 hdr) + 38(key) + 2(kv field2 hdr) = 44 bytes
         // then innerVal = 0x0a + 1byte(len) + modelId
         const kvStart = 2; // outer header skip
+        if (kvStart + 1 >= buf.length) {
+            console.error("Buffer too short");
+            return undefined;
+        }
         const keyLen = buf[kvStart + 1]; // kv field1 length
         const innerValOffset = kvStart + 2 + keyLen + 2; // skip outer hdr + kv-field1-hdr + key + kv-field2-hdr
+        if (innerValOffset + 1 >= buf.length) {
+            console.error("Invalid inner value offset");
+            return undefined;
+        }
         // innerVal: 0x0a(tag) + length byte + modelId bytes
         const modelIdLen = buf[innerValOffset + 1];
+        if (innerValOffset + 2 + modelIdLen > buf.length) {
+            console.error("Model ID length out of bounds");
+            return undefined;
+        }
         const modelId = buf.slice(innerValOffset + 2, innerValOffset + 2 + modelIdLen).toString('utf-8');
         return modelId;
     } catch {
@@ -348,11 +360,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
             const models = [
                 "自動選択 (デフォルト)",
-                "gemini-3-flash",
-                "gemini-3-pro",
-                "gemini-3.1-pro-high",
-                "gemini-2.5-pro",
-                "gemini-2.5-flash"
+                ...AG_MODELS
             ];
 
             const selectedModel = await vscode.window.showQuickPick(models, {
@@ -418,8 +426,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     await sleep(MODEL_RESTORE_WAIT_MS);
                 }
 
-            } catch (err: any) {
-                vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${err?.message || String(err)}`);
+            } catch (err: unknown) {
+                let msg = String(err);
+                if (err instanceof Error) {
+                    msg = err.message;
+                } else if (typeof err === "string") {
+                    msg = err;
+                }
+                vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${msg}`);
             } finally {
                 // === Restore Original Model ===
                 if (internalModelId && originalModelId) {

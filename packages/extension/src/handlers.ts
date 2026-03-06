@@ -301,7 +301,10 @@ async function executeAgentDispatch(
         try {
             await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
             await sleep(800);
-        } catch (e) { }
+        } catch (e: unknown) {
+            console.error("Failed to open prioritized chat panel", e);
+            config.logger.appendLine(`[MCP Bridge] Failed to open prioritized chat panel: ${formatUnknownError(e)}`);
+        }
 
         // sendPromptToAgentPanel が実際の送信コマンド（内部で sendMessageToChatPanel を呼ぶ）
         // sendTextToChat は入力欄にセットするだけで送信しない
@@ -334,9 +337,8 @@ async function executeAgentDispatch(
             try {
                 writeModelToDb(originalModelId);
                 config.logger.appendLine(`[MCP Hack] DB restored: ${selectedModel} → ${originalModelId}`);
-            } catch (e) {
-                config.logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
-                throw e;
+            } catch (e: unknown) {
+                config.logger.appendLine(`[MCP Hack] DB restore failed: ${formatUnknownError(e)}`);
             }
         }
     }
@@ -360,9 +362,7 @@ async function executeAgentDispatch(
     };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null;
-}
+
 
 async function handleGetLogs(
     params: BridgeGetLogsParams,

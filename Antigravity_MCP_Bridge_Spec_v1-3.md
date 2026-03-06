@@ -65,7 +65,7 @@ packages/shared/src/types.ts を以下の通り拡張する。
 ```typescript
 export interface AgentDispatchParams {  
     prompt: string;  
-    model?: string; // [NEW] Optional parameter for model selection  
+    model?: AgModel; // [NEW] Optional parameter for model selection (AgModel type)
 }
 ```
 

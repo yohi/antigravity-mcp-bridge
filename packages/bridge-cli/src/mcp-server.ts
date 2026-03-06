@@ -131,6 +131,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     // Tool: dispatch_agent_task
     // -------------------------------------------------------
     server.tool(
+        "dispatch_agent_task",
         "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
         "レスポンスは返らないため、結果はファイル変更で確認すること。" +
         "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。" +
@@ -138,7 +139,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
         {
             prompt: z.string().describe("エージェントに送信するプロンプト"),
             model: z
-                .enum(AG_MODELS as unknown as [string, ...string[]])
+                .union(AG_MODELS.map(m => z.literal(m)) as any)
                 .optional()
                 .describe("使用するAIモデルの指定（省略時はIDEのデフォルト）。指定時は送信前に内部モデル選択の適用を試行。"),
         },
