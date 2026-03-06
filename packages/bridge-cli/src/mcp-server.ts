@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { BridgeResponse } from "@antigravity-mcp-bridge/shared";
-import { isErrorResponse, AG_MODELS } from "@antigravity-mcp-bridge/shared";
+import type { BridgeResponse, WorkspaceEventParams } from "@antigravity-mcp-bridge/shared";
+import { isErrorResponse, AG_MODELS, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import type { WsClient } from "./ws-client.js";
 
 /**
@@ -288,8 +288,6 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     return server;
 }
 
-import type { WorkspaceEventParams } from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 
 /**
  * MCP サーバーを Stdio トランスポートで起動する。

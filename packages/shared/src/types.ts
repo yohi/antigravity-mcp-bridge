@@ -51,12 +51,12 @@ export const BRIDGE_METHODS = {
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
 
-export interface AgentListModelsParams { }
+export type AgentListModelsParams = Record<string, never>;
 export interface AgentListModelsResult {
     models: AgModel[];
 }
 
-export interface IdeDiagnosticsParams { }
+export type IdeDiagnosticsParams = Record<string, never>;
 export interface IdeDiagnosticsResult {
     [key: string]: unknown;
 }
@@ -160,9 +160,7 @@ export function mapToInternalModelId(model: string): string {
     }
 }
 
-export interface AgentListModelsResult {
-    models: AgModel[];
-}
+
 
 export interface WorkspaceEventParams {
     type: "file_created" | "file_changed" | "file_deleted";

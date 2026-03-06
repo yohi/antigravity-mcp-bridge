@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as crypto from "crypto";
 import * as path from "path";
 import * as os from "os";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import { BridgeWebSocketServer } from "./server";
 import { BRIDGE_METHODS, mapToInternalModelId } from "@antigravity-mcp-bridge/shared";
 import { RingBufferLogger } from "./logger";
@@ -28,6 +28,19 @@ const getDbPath = () => {
 const ANTIGRAVITY_DB_PATH = getDbPath();
 const MODEL_PREF_KEY = 'antigravityUnifiedStateSync.modelPreferences';
 
+function encodeVarint(value: number): Buffer {
+    const bytes: number[] = [];
+    do {
+        let byte = value & 0x7f;
+        value >>>= 7;
+        if (value !== 0) {
+            byte |= 0x80;
+        }
+        bytes.push(byte);
+    } while (value !== 0);
+    return Buffer.from(bytes);
+}
+
 /**
  * Protobufバイナリを組み立てて Base64 エンコードした値を返す
  * 構造: OuterMsg { field1: KVMsg { field1(str): key, field2: ValMsg { field1(str): modelId } } }
@@ -37,15 +50,15 @@ function buildModelPreferencesProto(modelId: string): string {
     const keyBytes = Buffer.from(key, 'utf-8');
     const modelBytes = Buffer.from(modelId, 'utf-8');
 
-    // innerValMsg: tag(field1,LEN)=0x0a + length + modelBytes
-    const innerVal = Buffer.concat([Buffer.from([0x0a, modelBytes.length]), modelBytes]);
-    // kvMsg: tag(field1,LEN)=0x0a + len + keyBytes + tag(field2,LEN)=0x12 + len + innerVal
+    // innerValMsg: tag(field1,LEN)=0x0a + varint(length) + modelBytes
+    const innerVal = Buffer.concat([Buffer.from([0x0a]), encodeVarint(modelBytes.length), modelBytes]);
+    // kvMsg: tag(field1,LEN)=0x0a + varint(len) + keyBytes + tag(field2,LEN)=0x12 + varint(len) + innerVal
     const kv = Buffer.concat([
-        Buffer.from([0x0a, keyBytes.length]), keyBytes,
-        Buffer.from([0x12, innerVal.length]), innerVal,
+        Buffer.from([0x0a]), encodeVarint(keyBytes.length), keyBytes,
+        Buffer.from([0x12]), encodeVarint(innerVal.length), innerVal,
     ]);
-    // outerMsg: tag(field1,LEN)=0x0a + len + kv
-    const outer = Buffer.concat([Buffer.from([0x0a, kv.length]), kv]);
+    // outerMsg: tag(field1,LEN)=0x0a + varint(len) + kv
+    const outer = Buffer.concat([Buffer.from([0x0a]), encodeVarint(kv.length), kv]);
     return outer.toString('base64');
 }
 
@@ -75,9 +88,10 @@ export function readModelFromDb(): string | undefined {
 
 export function writeModelToDb(modelId: string): void {
     const b64 = buildModelPreferencesProto(modelId);
-    execSync(
-        `sqlite3 "${ANTIGRAVITY_DB_PATH}" "UPDATE ItemTable SET value='${b64}' WHERE key='${MODEL_PREF_KEY}'"`
-    );
+    const safeB64 = b64.replace(/'/g, "''");
+    const safeKey = MODEL_PREF_KEY.replace(/'/g, "''");
+    const sql = `UPDATE ItemTable SET value='${safeB64}' WHERE key='${safeKey}'`;
+    execFileSync("sqlite3", [ANTIGRAVITY_DB_PATH, sql]);
 }
 
 export function setCurrentTargetModel(_modelId: string | undefined) {
@@ -356,6 +370,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             let originalModelId: string | undefined;
             const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+            const DB_PROPAGATION_MS = 1000;
+            const CHAT_PANEL_OPEN_MS = 800;
+            const PROMPT_SEND_MS = 500;
+            const MODEL_RESTORE_WAIT_MS = 4000;
+
             try {
                 if (internalModelId) {
                     if (!sqliteAvailable) {
@@ -370,7 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     writeModelToDb(internalModelId);
                     logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
                     // DBがファイルシステム上で反映され、IDEがリロードする時間を待つ
-                    await sleep(1000);
+                    await sleep(DB_PROPAGATION_MS);
                 }
 
                 const finalPrompt = prompt;
@@ -379,7 +398,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 logger.appendLine(`[MCP Bridge] Opening chat view...`);
                 try {
                     await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
-                    await sleep(800);
+                    await sleep(CHAT_PANEL_OPEN_MS);
                 } catch (e) { }
 
                 // 2. sendPromptToAgentPanel が実際の送信コマンド
@@ -387,7 +406,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 // ※ sendPromptToAgentPanel(文字列) が ChantPanel に直接送信する
                 logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
                 await vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", finalPrompt);
-                await sleep(500);
+                await sleep(PROMPT_SEND_MS);
 
                 // sendPromptToAgentPanel は内部で sendMessageToChatPanel を呼び直接送信するので
                 // executeCascadeAction は不要
@@ -396,7 +415,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
                 // リクエストが飛ぶまで待機してからモデルを元に戻す
                 if (internalModelId) {
-                    await sleep(4000);
+                    await sleep(MODEL_RESTORE_WAIT_MS);
                 }
 
             } catch (err: any) {

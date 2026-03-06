@@ -24,8 +24,10 @@ sequenceDiagram
     Client->>CLI: Call Tool: dispatch_agent_task<br>{ prompt: "...", model: "gemini-3-pro" }  
     CLI->>CLI: Validate model enum (Zod)  
     CLI->>Ext: WS Request: agent/dispatch<br>{ prompt: "...", model: "gemini-3-pro" }  
-    Ext->>Ext: promptを改変 (システムプロンプトの注入)  
-    Ext->>API: executeCommand("antigravity.sendPromptToAgentPanel", <br> { action: "sendMessage", text: "[System: Use gemini-3-pro...] \n\n prompt", modelId: "gemini-3-pro" })  
+    Ext->>Ext: readModelFromDb() で現在のモデルをバックアップ
+    Ext->>Ext: writeModelToDb("gemini-3-pro") でDBをパッチ
+    Ext->>API: executeCommand("antigravity.sendPromptToAgentPanel", "prompt")
+    Ext->>Ext: writeModelToDb() で元のモデルに復旧
     API-->>Ext: undefined (Fire-and-Forget)  
     Ext-->>CLI: WS Response: Success  
     CLI-->>Client: Tool Result
@@ -73,7 +75,7 @@ packages/bridge-cli/src/mcp-server.ts の dispatch_agent_task ツール定義を
 
 | Tool Name | Action | Arguments (Zod Schema) |
 | :---- | :---- | :---- |
-| dispatch_agent_task | 変更なし | prompt: z.string().describe("エージェントに送信するプロンプト") model: z.enum(["gemini-3-pro", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-pro-exp", "gemini-2.0-flash"]).optional().describe("使用するAIモデルの指定（省略時はIDEのデフォルト）") |
+| dispatch_agent_task | 変更なし | prompt: z.string().describe("エージェントに送信するプロンプト") model: z.enum(AG_MODELS).optional().describe("使用するAIモデルの指定（省略時はIDEのデフォルト）") |
 
 ## 7. LLM Guidelines (実装用プロンプト)
 
@@ -86,5 +88,5 @@ packages/bridge-cli/src/mcp-server.ts の dispatch_agent_task ツール定義を
 以下の3つのパッケージを順に修正してください。
 
 1. packages/shared/src/types.ts の AgentDispatchParams に model?: string を追加。  
-2. packages/bridge-cli/src/mcp-server.ts の dispatch_agent_task のZodスキーマに model (enum) を追加し、リクエストに含める。  
-3. packages/extension/src/handlers.ts の handleAgentDispatch を修正し、model が指定されている場合はプロンプトの先頭に [System Directive: You MUST use the '${params.model}' model for this task.]\n\n を注入してから executeCommand を実行するようにしてください。"
+2. packages/bridge-cli/src/mcp-server.ts の dispatch_agent_task のZodスキーマに model を追加し、リクエストに含める。  
+3. packages/extension/src/handlers.ts の handleAgentDispatch を修正し、model が指定されている場合は SQLite DB (writeModelToDb / readModelFromDb) を用いてモデル選択状態を一時的に書き換え、プロンプト送信後に元の状態へ復元するようにしてください。"

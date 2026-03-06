@@ -318,6 +318,9 @@ async function executeAgentDispatch(
         }
 
     } catch (err: unknown) {
+        if (err instanceof BridgeError) {
+            throw err;
+        }
         config.logger.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
@@ -333,6 +336,7 @@ async function executeAgentDispatch(
                 config.logger.appendLine(`[MCP Hack] DB restored: ${selectedModel} → ${originalModelId}`);
             } catch (e) {
                 config.logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
+                throw e;
             }
         }
     }
