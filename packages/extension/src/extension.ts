@@ -111,6 +111,21 @@ export function setCurrentTargetModel(_modelId: string | undefined) {
     // 後方互換のためのstub - handlers.ts から呼ばれる
 }
 
+// Mutex lock for agent dispatch to prevent race conditions during DB patching
+export let dispatchLock: Promise<void> = Promise.resolve();
+
+export function withDispatchLock<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+        dispatchLock = dispatchLock.then(async () => {
+            try {
+                resolve(await task());
+            } catch (err) {
+                reject(err);
+            }
+        }).catch(reject);
+    });
+}
+
 // ===============================================
 
 let wsServer: BridgeWebSocketServer | undefined;
@@ -375,88 +390,90 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 internalModelId = mapToInternalModelId(selectedModel);
             }
 
-            // === SQLite DB Direct Model Patch ===
-            let originalModelId: string | undefined;
-            const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+            await withDispatchLock(async () => {
+                // === SQLite DB Direct Model Patch ===
+                let originalModelId: string | undefined;
+                const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-            const DB_PROPAGATION_MS = 1000;
-            const CHAT_PANEL_OPEN_MS = 800;
-            const PROMPT_SEND_MS = 500;
-            const MODEL_RESTORE_WAIT_MS = 4000;
+                const DB_PROPAGATION_MS = 1000;
+                const CHAT_PANEL_OPEN_MS = 800;
+                const PROMPT_SEND_MS = 500;
+                const MODEL_RESTORE_WAIT_MS = 4000;
 
-            let sendSucceeded = false;
-            try {
-                if (internalModelId) {
-                    if (!sqliteAvailable) {
-                        logger.appendLine(`[MCP Hack] Aborting DB patch: sqlite3 not available.`);
-                        throw new Error("sqlite3 CLI is required for model selection.");
-                    }
-                    originalModelId = readModelFromDb();
-                    if (!originalModelId) {
-                        logger.appendLine(`[MCP Hack] Aborting DB patch: failed to read current model from DB.`);
-                        throw new Error("Failed to backup current model from DB.");
-                    }
-                    writeModelToDb(internalModelId);
-                    logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
-                    // DBがファイルシステム上で反映され、IDEがリロードする時間を待つ
-                    await sleep(DB_PROPAGATION_MS);
-                }
-
-                const finalPrompt = prompt;
-
-                // 1. チャットパネルを開く
-                logger.appendLine(`[MCP Bridge] Opening chat view...`);
+                let sendSucceeded = false;
                 try {
-                    await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
-                    await sleep(CHAT_PANEL_OPEN_MS);
-                } catch (e) {
-                    logger.appendLine(`[MCP Bridge] Failed to open prioritized chat panel: ${e}`);
-                }
+                    if (internalModelId) {
+                        if (!sqliteAvailable) {
+                            logger.appendLine(`[MCP Hack] Aborting DB patch: sqlite3 not available.`);
+                            throw new Error("sqlite3 CLI is required for model selection.");
+                        }
+                        originalModelId = readModelFromDb();
+                        if (!originalModelId) {
+                            logger.appendLine(`[MCP Hack] Aborting DB patch: failed to read current model from DB.`);
+                            throw new Error("Failed to backup current model from DB.");
+                        }
+                        writeModelToDb(internalModelId);
+                        logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
+                        // DBがファイルシステム上で反映され、IDEがリロードする時間を待つ
+                        await sleep(DB_PROPAGATION_MS);
+                    }
 
-                // 2. sendPromptToAgentPanel が実際の送信コマンド
-                // ※ sendTextToChat は入力欄にセットするだけで送信しない
-                // ※ sendPromptToAgentPanel(文字列) が ChantPanel に直接送信する
-                logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
-                await vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", finalPrompt);
-                await sleep(PROMPT_SEND_MS);
+                    const finalPrompt = prompt;
 
-                // sendPromptToAgentPanel は内部で sendMessageToChatPanel を呼び直接送信するので
-                // executeCascadeAction は不要
-
-                // リクエストが飛ぶまで待機してからモデルを元に戻す
-                if (internalModelId) {
-                    await sleep(MODEL_RESTORE_WAIT_MS);
-                }
-
-                sendSucceeded = true;
-            } catch (err: unknown) {
-                let msg = String(err);
-                if (err instanceof Error) {
-                    msg = err.message;
-                } else if (typeof err === "string") {
-                    msg = err;
-                }
-                vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${msg}`);
-            } finally {
-                let restoreSucceeded = true;
-                // === Restore Original Model ===
-                if (internalModelId && originalModelId) {
+                    // 1. チャットパネルを開く
+                    logger.appendLine(`[MCP Bridge] Opening chat view...`);
                     try {
-                        writeModelToDb(originalModelId);
-                        logger.appendLine(`[MCP Hack] DB restored: ${internalModelId} → ${originalModelId}`);
+                        await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+                        await sleep(CHAT_PANEL_OPEN_MS);
                     } catch (e) {
-                        restoreSucceeded = false;
-                        logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
-                        if (sendSucceeded) {
-                            vscode.window.showErrorMessage(`モデルの復元に失敗しました: ${e}`);
+                        logger.appendLine(`[MCP Bridge] Failed to open prioritized chat panel: ${e}`);
+                    }
+
+                    // 2. sendPromptToAgentPanel が実際の送信コマンド
+                    // ※ sendTextToChat は入力欄にセットするだけで送信しない
+                    // ※ sendPromptToAgentPanel(文字列) が ChantPanel に直接送信する
+                    logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
+                    await vscode.commands.executeCommand("antigravity.sendPromptToAgentPanel", finalPrompt);
+                    await sleep(PROMPT_SEND_MS);
+
+                    // sendPromptToAgentPanel は内部で sendMessageToChatPanel を呼び直接送信するので
+                    // executeCascadeAction は不要
+
+                    // リクエストが飛ぶまで待機してからモデルを元に戻す
+                    if (internalModelId) {
+                        await sleep(MODEL_RESTORE_WAIT_MS);
+                    }
+
+                    sendSucceeded = true;
+                } catch (err: unknown) {
+                    let msg = String(err);
+                    if (err instanceof Error) {
+                        msg = err.message;
+                    } else if (typeof err === "string") {
+                        msg = err;
+                    }
+                    vscode.window.showErrorMessage(`プロンプト送信に失敗しました: ${msg}`);
+                } finally {
+                    let restoreSucceeded = true;
+                    // === Restore Original Model ===
+                    if (internalModelId && originalModelId) {
+                        try {
+                            writeModelToDb(originalModelId);
+                            logger.appendLine(`[MCP Hack] DB restored: ${internalModelId} → ${originalModelId}`);
+                        } catch (e) {
+                            restoreSucceeded = false;
+                            logger.appendLine(`[MCP Hack] DB restore failed: ${e}`);
+                            if (sendSucceeded) {
+                                vscode.window.showErrorMessage(`モデルの復元に失敗しました: ${e}`);
+                            }
                         }
                     }
-                }
 
-                if (sendSucceeded && restoreSucceeded) {
-                    vscode.window.showInformationMessage(`プロンプト送信完了${internalModelId ? ` (モデル: ${internalModelId})` : ""}`);
+                    if (sendSucceeded && restoreSucceeded) {
+                        vscode.window.showInformationMessage(`プロンプト送信完了${internalModelId ? ` (モデル: ${internalModelId})` : ""}`);
+                    }
                 }
-            }
+            });
         })
     );
 }

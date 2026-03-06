@@ -17,7 +17,7 @@ import type {
 } from "@antigravity-mcp-bridge/shared";
 import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS, mapToInternalModelId, AgModel, formatUnknownError } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
-import { setCurrentTargetModel, readModelFromDb, writeModelToDb } from "./extension";
+import { setCurrentTargetModel, readModelFromDb, writeModelToDb, withDispatchLock } from "./extension";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -235,26 +235,17 @@ async function handleFsWrite(
     };
 }
 
-// Mutex lock for agent dispatch to prevent race conditions during DB patching
-let dispatchLock: Promise<void> = Promise.resolve();
-
 async function handleAgentDispatch(
     params: AgentDispatchParams,
     config: ServerConfig
 ): Promise<AgentDispatchResult> {
-    return new Promise((resolve, reject) => {
-        dispatchLock = dispatchLock.then(async () => {
-            try {
-                const result = await executeAgentDispatch(params, config);
-                resolve(result);
-            } catch (err) {
-                reject(err);
-            }
-        }).catch((err) => {
-            // This should not happen if executeAgentDispatch handles errors properly
+    return withDispatchLock(async () => {
+        return await executeAgentDispatch(params, config);
+    }).catch((err) => {
+        if (!(err instanceof BridgeError)) {
             config.logger.appendLine(`[MCP Bridge] Critical lock error: ${formatUnknownError(err)}`);
-            reject(err);
-        });
+        }
+        throw err;
     });
 }
 
@@ -272,6 +263,7 @@ async function executeAgentDispatch(
     const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
     let sendSucceeded = false;
+    let restoreError: BridgeError | undefined;
     try {
         if (params.model) {
             // Validate model
@@ -342,13 +334,17 @@ async function executeAgentDispatch(
             } catch (e: unknown) {
                 config.logger.appendLine(`[MCP Hack] DB restore failed: ${formatUnknownError(e)}`);
                 if (sendSucceeded) {
-                    throw createBridgeError(
+                    restoreError = createBridgeError(
                         ERROR_CODES.AGENT_DISPATCH_FAILED,
                         `Failed to restore DB model: ${formatUnknownError(e)}`
                     );
                 }
             }
         }
+    }
+
+    if (restoreError) {
+        throw restoreError;
     }
 
     const preview =

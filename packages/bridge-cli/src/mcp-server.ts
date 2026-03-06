@@ -132,7 +132,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     // -------------------------------------------------------
     server.tool(
         "dispatch_agent_task",
-        "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
+        "Antigravityのエージェントにタスクを委譲する（モデル選択をサポート）。" +
         "レスポンスは返らないため、結果はファイル変更で確認すること。" +
         "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。" +
         "model指定時は、送信前にSQLite DBをパッチして内部モデル選択を適用する（ベストエフォート）。",
@@ -279,7 +279,7 @@ export function createMcpServer(wsClient: WsClient): McpServer {
                 content: [
                     {
                         type: "text" as const,
-                        text: JSON.stringify(response.result, null, 2),
+                        text: response.result ? JSON.stringify(response.result, null, 2) : "",
                     },
                 ],
             };
