@@ -15,9 +15,9 @@ import type {
     BridgeGetLogsParams,
     BridgeGetLogsResult,
 } from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS, ERROR_CODES } from "@antigravity-mcp-bridge/shared";
+import { BRIDGE_METHODS, ERROR_CODES, AG_MODELS, mapToInternalModelId, AgModel, formatUnknownError } from "@antigravity-mcp-bridge/shared";
 import type { ServerConfig } from "./server";
-import { formatUnknownError } from "@antigravity-mcp-bridge/shared";
+import { setCurrentTargetModel, readModelFromDb, writeModelToDb, withDispatchLock } from "./extension";
 
 /**
  * 受信した JSON-RPC メッセージをディスパッチし、適切なハンドラを呼び出す。
@@ -60,6 +60,12 @@ export async function handleMessage(
                     )
                 );
 
+            case BRIDGE_METHODS.AGENT_LIST_MODELS:
+                return success(id, await handleAgentListModels());
+
+            case BRIDGE_METHODS.IDE_DIAGNOSTICS:
+                return success(id, await handleIdeDiagnostics());
+
             default:
                 return error(id, -32601, `Method not found: ${method}`);
         }
@@ -69,6 +75,17 @@ export async function handleMessage(
         }
         const errorMessage = formatUnknownError(err);
         return error(id, -32603, `Internal error: ${errorMessage}`);
+    }
+}
+
+async function handleIdeDiagnostics(): Promise<unknown> {
+    try {
+        const diagnostics = await vscode.commands.executeCommand(
+            "antigravity.getDiagnostics"
+        );
+        return diagnostics;
+    } catch (err: unknown) {
+        throw new Error(`Failed to get IDE diagnostics: ${formatUnknownError(err)}`);
     }
 }
 
@@ -222,16 +239,85 @@ async function handleAgentDispatch(
     params: AgentDispatchParams,
     config: ServerConfig
 ): Promise<AgentDispatchResult> {
+    return withDispatchLock(async () => {
+        return await executeAgentDispatch(params, config);
+    }).catch((err) => {
+        if (!(err instanceof BridgeError)) {
+            config.logger.appendLine(`[MCP Bridge] Critical lock error: ${formatUnknownError(err)}`);
+        }
+        throw err;
+    });
+}
+
+async function executeAgentDispatch(
+    params: AgentDispatchParams,
+    config: ServerConfig
+): Promise<AgentDispatchResult> {
     if (!params?.prompt) {
         throw createBridgeError(ERROR_CODES.INVALID_PARAMS, "Prompt is required");
     }
 
+    const promptText = params.prompt;
+    let selectedModel: string | undefined;
+    let originalModelId: string | undefined;
+    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    let sendSucceeded = false;
+    let restoreError: BridgeError | undefined;
     try {
+        if (params.model) {
+            // Validate model
+            if (!AG_MODELS.includes(params.model as AgModel)) {
+                config.logger.appendLine(`[MCP Bridge] Invalid model requested: ${params.model}. Skipping patch.`);
+                throw createBridgeError(ERROR_CODES.INVALID_PARAMS, `Invalid model requested: ${params.model}`);
+            }
+
+            const internalModelId = mapToInternalModelId(params.model);
+
+            // === SQLite DB Direct Model Patch ===
+            originalModelId = readModelFromDb();
+            if (!originalModelId) {
+                config.logger.appendLine(`[MCP Bridge] Failed to read current model from DB. Aborting patch.`);
+                throw createBridgeError(ERROR_CODES.AGENT_DISPATCH_FAILED, "Failed to backup model before patch.");
+            }
+
+            writeModelToDb(internalModelId);
+            selectedModel = internalModelId;
+            config.logger.appendLine(`[MCP Hack] DB patched: ${originalModelId} → ${internalModelId}`);
+            // DB反映待ち
+            await sleep(1000);
+        }
+
+        const finalPromptText = promptText;
+
+        // 1. チャットパネルを開く
+        try {
+            await vscode.commands.executeCommand("antigravity.prioritized.chat.open");
+            await sleep(800);
+        } catch (e: unknown) {
+            console.error("Failed to open prioritized chat panel", e);
+            config.logger.appendLine(`[MCP Bridge] Failed to open prioritized chat panel: ${formatUnknownError(e)}`);
+        }
+
+        // sendPromptToAgentPanel が実際の送信コマンド（内部で sendMessageToChatPanel を呼ぶ）
+        // sendTextToChat は入力欄にセットするだけで送信しない
+        config.logger.appendLine(`[MCP Bridge] Sending prompt via sendPromptToAgentPanel...`);
         await vscode.commands.executeCommand(
             "antigravity.sendPromptToAgentPanel",
-            { action: "sendMessage", text: params.prompt }
+            finalPromptText
         );
+        await sleep(500);
+
+        if (selectedModel) {
+            // DBリストア前に送信完了まで待機
+            await sleep(4000);
+        }
+
+        sendSucceeded = true;
     } catch (err: unknown) {
+        if (err instanceof BridgeError) {
+            throw err;
+        }
         config.logger.appendLine(
             `[MCP Bridge] Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
@@ -239,6 +325,26 @@ async function handleAgentDispatch(
             ERROR_CODES.AGENT_DISPATCH_FAILED,
             `Failed to dispatch agent task: ${formatUnknownError(err)}`
         );
+    } finally {
+        // === Restore Original Model ===
+        if (params.model && originalModelId) {
+            try {
+                writeModelToDb(originalModelId);
+                config.logger.appendLine(`[MCP Hack] DB restored: ${selectedModel} → ${originalModelId}`);
+            } catch (e: unknown) {
+                config.logger.appendLine(`[MCP Hack] DB restore failed: ${formatUnknownError(e)}`);
+                if (sendSucceeded) {
+                    restoreError = createBridgeError(
+                        ERROR_CODES.AGENT_DISPATCH_FAILED,
+                        `Failed to restore DB model: ${formatUnknownError(e)}`
+                    );
+                }
+            }
+        }
+    }
+
+    if (restoreError) {
+        throw restoreError;
     }
 
     const preview =
@@ -249,8 +355,18 @@ async function handleAgentDispatch(
         `[MCP Bridge] Agent task dispatched: "${preview}"`
     );
 
-    return { success: true, message: `Agent task dispatched: "${preview}"` };
+    const modelSuffix = selectedModel
+        ? ` (model: ${selectedModel})`
+        : params.model
+            ? ` (requested model: ${params.model})`
+            : "";
+    return {
+        success: true,
+        message: `Agent task dispatched${modelSuffix}: "${preview}"`,
+    };
 }
+
+
 
 async function handleGetLogs(
     params: BridgeGetLogsParams,
@@ -259,6 +375,10 @@ async function handleGetLogs(
     const lines = params?.lines ?? 100;
     const logs = config.logger.getLogs(lines);
     return { logs };
+}
+
+async function handleAgentListModels(): Promise<{ models: string[] }> {
+    return { models: [...AG_MODELS] };
 }
 
 // ============================================================

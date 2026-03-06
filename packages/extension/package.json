@@ -19,6 +19,12 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "commands": [
+            {
+                "command": "antigravityMcpBridge.postPrompt",
+                "title": "Antigravity MCP Bridge: Send Prompt to Agent"
+            }
+        ],
         "configuration": {
             "title": "Antigravity MCP Bridge",
             "properties": {

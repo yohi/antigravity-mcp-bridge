@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { BridgeResponse } from "@antigravity-mcp-bridge/shared";
-import { isErrorResponse } from "@antigravity-mcp-bridge/shared";
+import type { BridgeResponse, WorkspaceEventParams } from "@antigravity-mcp-bridge/shared";
+import { isErrorResponse, AG_MODELS, BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 import type { WsClient } from "./ws-client.js";
 
 /**
@@ -132,14 +132,19 @@ export function createMcpServer(wsClient: WsClient): McpServer {
     // -------------------------------------------------------
     server.tool(
         "dispatch_agent_task",
-        "Antigravityのエージェント(Gemini 3 Pro)にタスクを委譲する。" +
+        "Antigravityのエージェントにタスクを委譲する（モデル選択をサポート）。" +
         "レスポンスは返らないため、結果はファイル変更で確認すること。" +
-        "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。",
+        "完了確認用のシグナルファイル(例: DONE.md)をプロンプトに含めることを推奨。" +
+        "model指定時は、送信前にSQLite DBをパッチして内部モデル選択を適用する（ベストエフォート）。",
         {
             prompt: z.string().describe("エージェントに送信するプロンプト"),
+            model: z
+                .enum(AG_MODELS)
+                .optional()
+                .describe("使用するAIモデルの指定（省略時はIDEのデフォルト）。指定時は送信前に内部モデル選択の適用を試行。"),
         },
-        async ({ prompt }) => {
-            const response = await wsClient.sendRequest("agent/dispatch", { prompt });
+        async ({ prompt, model }) => {
+            const response = await wsClient.sendRequest("agent/dispatch", { prompt, model });
 
             if (isErrorResponse(response)) {
                 return {
@@ -171,6 +176,41 @@ export function createMcpServer(wsClient: WsClient): McpServer {
                     {
                         type: "text" as const,
                         text: "タスクをAntigravityエージェントに送信しました。結果はファイルの変更で確認してください。",
+                    },
+                ],
+            };
+        }
+    );
+
+
+    // -------------------------------------------------------
+    // Tool: list_agent_models
+    // -------------------------------------------------------
+    server.tool(
+        "list_agent_models",
+        "使用可能なAIモデルの一覧を取得する。",
+        {},
+        async () => {
+            const response = await wsClient.sendRequest(BRIDGE_METHODS.AGENT_LIST_MODELS, {});
+
+            if (isErrorResponse(response)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Error: ${response.error.message}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            const result = response.result as { models: string[] };
+            return {
+                content: [
+                    {
+                        type: "text" as const,
+                        text: `Available Models:\n${result.models.map(m => `- ${m}`).join("\n")}`,
                     },
                 ],
             };
@@ -213,11 +253,42 @@ export function createMcpServer(wsClient: WsClient): McpServer {
         }
     );
 
+    // -------------------------------------------------------
+    // Tool: get_ide_diagnostics
+    // -------------------------------------------------------
+    server.tool(
+        "get_ide_diagnostics",
+        "Antigravity IDE の内部診断情報を取得し、現在のモデル設定やシステム状態を確認する。",
+        {},
+        async () => {
+            const response = await wsClient.sendRequest(BRIDGE_METHODS.IDE_DIAGNOSTICS, {});
+
+            if (isErrorResponse(response)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Error: ${response.error.message}`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            return {
+                content: [
+                    {
+                        type: "text" as const,
+                        text: response.result ? JSON.stringify(response.result, null, 2) : "",
+                    },
+                ],
+            };
+        }
+    );
+
     return server;
 }
 
-import type { WorkspaceEventParams } from "@antigravity-mcp-bridge/shared";
-import { BRIDGE_METHODS } from "@antigravity-mcp-bridge/shared";
 
 /**
  * MCP サーバーを Stdio トランスポートで起動する。

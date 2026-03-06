@@ -43,11 +43,23 @@ export const BRIDGE_METHODS = {
     FS_READ: "fs/read",
     FS_WRITE: "fs/write",
     AGENT_DISPATCH: "agent/dispatch",
+    AGENT_LIST_MODELS: "agent/models/list",
     WORKSPACE_EVENT: "workspace/event",
     GET_LOGS: "bridge/logs",
+    IDE_DIAGNOSTICS: "ide/diagnostics",
 } as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[keyof typeof BRIDGE_METHODS];
+
+export type AgentListModelsParams = Record<string, never>;
+export interface AgentListModelsResult {
+    models: AgModel[];
+}
+
+export type IdeDiagnosticsParams = Record<string, never>;
+export interface IdeDiagnosticsResult {
+    [key: string]: unknown;
+}
 
 // ============================================================
 // Error Codes
@@ -106,12 +118,53 @@ export interface FsWriteResult {
 
 export interface AgentDispatchParams {
     prompt: string;
+    model?: AgModel;
 }
 
 export interface AgentDispatchResult {
     success: boolean;
     message?: string;
 }
+
+export const AG_MODELS = [
+    "gemini-3.1-pro-high",
+    "gemini-3.1-pro",
+    "gemini-3.1-flash",
+    "gemini-3-pro",
+    "gemini-3-flash",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+] as const;
+
+export type AgModel = (typeof AG_MODELS)[number];
+
+/**
+ * AgModel 名から Antigravity 内部のモデル ID へマッピングする
+ * 
+ * 未知の ID が渡された場合のデフォルトの挙動として、入力モデル文字列をそのまま返す（バリデーションや例外のスローは行わない）。
+ * これは、この関数の呼び出し元（例: handlers.ts での AG_MODELS.includes(...) など）で事前に許可リストによる検証が行われることを前提としているためである。
+ * したがって、将来的に新しいモデルマッピングが必要になった場合は、この関数の更新とともに共通の AG_MODELS 定数も忘れずに更新すること。
+ */
+export function mapToInternalModelId(model: string): string {
+    switch (model.toLowerCase()) {
+        case "gemini-3.1-pro-high":
+        case "gemini-3-pro":
+            return "RIFTRUNNER_THINKING_HIGH";
+        case "gemini-3.1-pro":
+            return "RIFTRUNNER_THINKING_LOW";
+        case "gemini-3.1-flash":
+        case "gemini-3-flash":
+            return "INFINITYJET";
+        case "gemini-2.5-pro":
+            return "GOOGLE_GEMINI_2_5_PRO";
+        case "gemini-2.5-flash":
+            return "GOOGLE_GEMINI_2_5_FLASH";
+        default:
+            return model;
+    }
+}
+
+
 
 export interface WorkspaceEventParams {
     type: "file_created" | "file_changed" | "file_deleted";
